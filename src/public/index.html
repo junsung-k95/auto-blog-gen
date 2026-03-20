@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>auto-blog-gen</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>✍️ auto-blog-gen</h1>
+      <div class="provider-selector">
+        <label for="aiProvider">AI 모델</label>
+        <select id="aiProvider">
+          <option value="openai">OpenAI GPT-4o</option>
+          <option value="claude">Claude claude-opus-4-6</option>
+        </select>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Voice Input -->
+      <section class="card" id="voiceSection">
+        <h2>🎤 음성 입력</h2>
+        <div class="voice-controls">
+          <button id="recordBtn" class="btn btn-record">● 녹음 시작</button>
+          <button id="stopBtn" class="btn btn-stop" disabled>■ 정지</button>
+          <span id="recordStatus" class="status-text"></span>
+        </div>
+        <div id="transcriptBox" class="transcript-box" contenteditable="true" placeholder="음성 녹음 후 텍스트가 여기에 표시됩니다. 직접 수정도 가능합니다."></div>
+      </section>
+
+      <!-- Image Upload -->
+      <section class="card" id="imageSection">
+        <h2>🖼️ 사진 첨부</h2>
+        <div id="dropZone" class="drop-zone">
+          <span>사진을 여기에 드래그하거나 클릭하여 업로드</span>
+          <input type="file" id="imageInput" accept="image/*" multiple hidden />
+        </div>
+        <div id="imagePreviews" class="image-previews"></div>
+      </section>
+
+      <!-- Memo -->
+      <section class="card" id="memoSection">
+        <h2>📝 추가 메모</h2>
+        <textarea id="memoInput" class="memo-input" placeholder="짧은 메모나 추가 정보를 입력하세요 (선택사항)"></textarea>
+      </section>
+
+      <!-- Generate Button -->
+      <div class="action-bar">
+        <button id="generateBtn" class="btn btn-primary btn-large">✨ 포스팅 생성</button>
+      </div>
+
+      <!-- Preview -->
+      <section class="card" id="previewSection" style="display:none">
+        <div class="preview-header">
+          <h2>미리보기</h2>
+          <div id="usageInfo" class="usage-info" style="display:none"></div>
+        </div>
+        <div id="titleInput" class="preview-title" contenteditable="true" placeholder="포스팅 제목을 입력하세요"></div>
+        <div id="previewContent" class="preview-content"></div>
+        <div class="publish-bar">
+          <div class="publish-options">
+            <input type="text" id="tagsInput" placeholder="태그 (쉼표로 구분)" class="tags-input" />
+            <label class="draft-toggle">
+              <input type="checkbox" id="draftMode" /> 임시저장으로 올리기
+            </label>
+          </div>
+          <button id="publishBtn" class="btn btn-publish">📤 네이버 블로그 업로드</button>
+        </div>
+        <div id="publishResult" class="publish-result" style="display:none"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

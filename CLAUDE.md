@@ -4,102 +4,100 @@ This file provides guidance for AI assistants (Claude and others) working on the
 
 ## Project Overview
 
-`auto-blog-gen` is a Node.js/JavaScript project for automated blog generation. The repository is in its initial scaffolding state — no application code has been committed yet.
+`auto-blog-gen` is a Node.js/Express web service for automated Naver blog posting. Users access a simple web UI to record voice, upload photos, and auto-generate + publish blog posts using AI.
 
 ## Repository State (as of 2026-03-20)
 
 | Item | Status |
 |---|---|
-| Source code | Not yet created |
-| Dependencies | Not yet defined |
+| Source code | Implemented |
+| Dependencies | Defined in package.json |
 | Tests | Not yet created |
-| CI/CD | Not yet configured |
-| Documentation | Minimal placeholder |
+| CI/CD | render.yaml configured |
+| Documentation | README.md + IMPLEMENTATION_PLAN.md |
 
 ## Current File Structure
 
 ```
 auto-blog-gen/
-├── .gitignore     # Standard Node.js gitignore template
-├── README.md      # Placeholder header only
-└── CLAUDE.md      # This file
+├── src/
+│   ├── index.js              # Express server entry point
+│   ├── routes/
+│   │   ├── transcribe.js     # POST /api/transcribe (Whisper STT)
+│   │   ├── generate.js       # POST /api/generate (AI blog generation, SSE streaming)
+│   │   └── publish.js        # POST /api/publish (Naver Blog XML-RPC)
+│   ├── services/
+│   │   ├── openai.js         # Whisper + GPT-4o client
+│   │   ├── claude.js         # Claude claude-opus-4-6 client (streaming)
+│   │   ├── aiRouter.js       # Provider selection (openai vs claude)
+│   │   ├── naver.js          # XML-RPC MetaWeblog client
+│   │   └── pastPosts.js      # /posts/*.md reader for style reference
+│   └── public/
+│       ├── index.html        # Main UI
+│       ├── style.css
+│       └── app.js            # Voice recording, image upload, SSE streaming
+├── posts/                    # Past blog posts for style reference (*.md)
+│   └── example-post.md
+├── .env.example              # All required env vars documented
+├── package.json
+├── render.yaml               # Render deployment config
+├── IMPLEMENTATION_PLAN.md    # Detailed implementation plan
+├── README.md
+└── CLAUDE.md                 # This file
 ```
 
-## Technology Stack
-
-Based on the `.gitignore` template, this project is intended to be a **Node.js/JavaScript** project. The gitignore covers:
-- npm, yarn, pnpm package managers
-- TypeScript (`.tsbuildinfo`)
-- Common frontend frameworks: Next.js, Nuxt.js, Gatsby, SvelteKit, VitePress, Docusaurus
-- Bundlers: Parcel, Vite, FuseBox
-- Test coverage: istanbul/nyc, lcov
-
-The exact framework and toolchain have not been chosen yet.
-
 ## Development Setup
-
-Once the project is initialized, the typical workflow will be:
 
 ```bash
 # Install dependencies
 npm install
 
-# Run development server (command TBD)
+# Run development server (with file watching)
 npm run dev
 
-# Run tests (command TBD)
-npm test
-
-# Build for production (command TBD)
-npm run build
+# Run production server
+npm start
 ```
 
-## Git Workflow
+Server runs on `http://localhost:3000` by default.
 
-- **Main branch:** `main` (or `master`)
-- **Feature branches:** use descriptive names, e.g. `feature/add-openai-integration`
-- **Claude branches:** follow the pattern `claude/<description>-<sessionId>`
-- Commit messages should be clear and descriptive
-- Always push with `-u` to set upstream: `git push -u origin <branch-name>`
+## Environment Variables
 
-## Conventions to Follow
+Copy `.env.example` to `.env` and fill in:
 
-Since no application code exists yet, follow these general Node.js best practices when building this project:
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API key (required for Whisper STT) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required for Claude mode) |
+| `NAVER_USERNAME` | Naver account ID |
+| `NAVER_API_PASSWORD` | Naver Blog API connection password |
+| `NAVER_BLOG_ID` | Naver Blog ID |
+| `AI_PROVIDER` | Default AI provider: `openai` or `claude` |
+| `PORT` | Server port (default: 3000) |
 
-### Code Style
-- Use consistent indentation (2 spaces is standard for JS/TS projects)
-- Prefer `const` over `let`; avoid `var`
-- Use async/await over raw Promise chains
-- Keep functions small and single-purpose
+## Technology Stack
 
-### File Organization (recommended)
-```
-src/
-├── index.js        # Entry point
-├── generators/     # Blog content generation logic
-├── services/       # External API integrations (AI, CMS, etc.)
-├── utils/          # Shared utility functions
-└── config/         # Configuration loading
-tests/
-├── unit/
-└── integration/
-```
-
-### Environment Variables
-- Never commit secrets or API keys
-- Use `.env` for local development (already gitignored)
-- Provide a `.env.example` with all required keys documented (not gitignored)
-
-### Dependencies
-- Pin exact versions in production (`npm install --save-exact`)
-- Keep `devDependencies` separate from `dependencies`
-- Audit dependencies regularly: `npm audit`
+| Layer | Choice |
+|---|---|
+| Runtime | Node.js 20+ |
+| Framework | Express.js |
+| Frontend | Vanilla HTML/CSS/JS |
+| STT | OpenAI Whisper (`whisper-1`) |
+| Image analysis + Blog generation | GPT-4o or Claude claude-opus-4-6 |
+| Naver Blog | XML-RPC MetaWeblog API (`xmlrpc` npm) |
+| File upload | multer (memory storage) |
+| Hosting | Render |
+| Past posts storage | `/posts/*.md` files |
 
 ## Key Notes for AI Assistants
 
-1. **This project has no existing code** — when implementing features, establish patterns from scratch following the conventions above.
-2. **Check README.md** for any updated project description before starting work.
-3. **Create `.env.example`** whenever environment variables are introduced.
-4. **Add tests** alongside any new source files.
-5. **Update this CLAUDE.md** as the project evolves with new structure, commands, and conventions.
-6. **Do not commit** `.env`, `node_modules/`, `dist/`, or other gitignored artifacts.
+1. **Past posts** go in `/posts/` as `.md` files — used for writing style reference.
+2. **AI provider** is selectable at runtime via UI dropdown or `AI_PROVIDER` env var.
+3. **Naver API password** is separate from the Naver account login password — get it from blog admin.
+4. **Streaming** is implemented via SSE (Server-Sent Events) in `/api/generate`.
+5. **Never commit** `.env`, `node_modules/`, or other gitignored artifacts.
+
+## Git Workflow
+
+- **Feature branches:** `claude/<description>-<sessionId>`
+- Always push with `-u`: `git push -u origin <branch-name>`

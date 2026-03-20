@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: auto-blog-gen
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NAVER_USERNAME
+        sync: false
+      - key: NAVER_API_PASSWORD
+        sync: false
+      - key: NAVER_BLOG_ID
+        sync: false
+      - key: AI_PROVIDER
+        value: openai
