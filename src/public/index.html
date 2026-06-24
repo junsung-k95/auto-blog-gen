@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>auto-blog-gen</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- History panel (slide-in from right) -->
+  <div id="historyPanel" class="history-panel">
+    <div class="history-panel-header">
+      <h3>📋 발행 히스토리</h3>
+      <button id="historyCloseBtn" class="btn-icon">✕</button>
+    </div>
+    <div id="historyList" class="history-list">
+      <p class="empty-msg">발행된 포스팅이 없습니다.</p>
+    </div>
+  </div>
+  <div id="historyOverlay" class="history-overlay"></div>
+
+  <div class="app">
+    <header class="app-header">
+      <h1>✍️ auto-blog-gen</h1>
+      <div class="header-controls">
+        <div class="provider-selector">
+          <label for="aiProvider">AI 모델</label>
+          <select id="aiProvider">
+            <option value="openai">OpenAI GPT-4o</option>
+            <option value="claude">Claude claude-opus-4-6</option>
+          </select>
+        </div>
+        <button id="historyBtn" class="btn btn-ghost">📋 히스토리</button>
+      </div>
+    </header>
+
+    <!-- Draft restore banner -->
+    <div id="draftBanner" class="draft-banner" style="display:none">
+      💾 저장된 초안이 있습니다.
+      <button id="draftRestoreBtn" class="btn-link">불러오기</button>
+      <button id="draftDismissBtn" class="btn-link muted">무시</button>
+    </div>
+
+    <main class="app-main">
+      <!-- Voice Input -->
+      <section class="card" id="voiceSection">
+        <h2>🎤 음성 입력</h2>
+        <div class="voice-controls">
+          <button id="recordBtn" class="btn btn-record">● 녹음 시작</button>
+          <button id="stopBtn" class="btn btn-stop" disabled>■ 정지</button>
+          <span id="recordStatus" class="status-text"></span>
+        </div>
+        <div id="transcriptBox" class="transcript-box" contenteditable="true"
+          placeholder="음성 녹음 후 텍스트가 여기에 표시됩니다. 직접 수정도 가능합니다."></div>
+      </section>
+
+      <!-- Image Upload -->
+      <section class="card" id="imageSection">
+        <h2>🖼️ 사진 첨부</h2>
+        <div id="dropZone" class="drop-zone">
+          <span>사진을 여기에 드래그하거나 클릭하여 업로드</span>
+          <input type="file" id="imageInput" accept="image/*" multiple hidden />
+        </div>
+        <p id="dragHint" class="drag-hint" style="display:none">↕ 드래그로 순서 변경 가능</p>
+        <div id="imagePreviews" class="image-previews"></div>
+      </section>
+
+      <!-- Memo -->
+      <section class="card" id="memoSection">
+        <h2>📝 추가 메모</h2>
+        <textarea id="memoInput" class="memo-input"
+          placeholder="짧은 메모나 추가 정보를 입력하세요 (선택사항)"></textarea>
+      </section>
+
+      <!-- Generate Button -->
+      <div class="action-bar">
+        <button id="generateBtn" class="btn btn-primary btn-large">✨ 포스팅 생성</button>
+        <p id="autoSaveStatus" class="autosave-status"></p>
+      </div>
+
+      <!-- Preview -->
+      <section class="card" id="previewSection" style="display:none">
+        <div class="preview-header">
+          <h2>미리보기</h2>
+          <div class="preview-header-actions">
+            <button id="editToggleBtn" class="btn btn-ghost btn-sm">✏️ 편집</button>
+            <button id="trendBtn" class="btn btn-trend btn-sm">📊 트렌드 분석</button>
+          </div>
+        </div>
+
+        <div id="usageInfo" class="usage-info" style="display:none"></div>
+
+        <!-- Trend result panel -->
+        <div id="trendPanel" class="trend-panel" style="display:none">
+          <div class="trend-panel-header">
+            <span class="trend-panel-title">📊 트렌드 분석 결과</span>
+            <button id="trendCloseBtn" class="btn-icon">✕</button>
+          </div>
+          <div id="trendContent" class="trend-content"></div>
+        </div>
+
+        <div id="titleInput" class="preview-title" contenteditable="true"
+          placeholder="포스팅 제목을 입력하세요"></div>
+
+        <div id="previewContent" class="preview-content"></div>
+
+        <div class="publish-bar">
+          <div class="publish-options">
+            <input type="text" id="tagsInput" placeholder="태그 (쉼표로 구분)" class="tags-input" />
+            <label class="draft-toggle">
+              <input type="checkbox" id="draftMode" /> 임시저장으로 올리기
+            </label>
+          </div>
+          <button id="publishBtn" class="btn btn-publish">📤 네이버 블로그 업로드</button>
+        </div>
+        <div id="publishResult" class="publish-result" style="display:none"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.3/Sortable.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
