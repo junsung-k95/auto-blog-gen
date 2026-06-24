@@ -4,7 +4,11 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _openai = null;
+function getClient() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 // Pricing (USD per 1M tokens) — GPT-4o as of 2025
 const PRICING = {
@@ -24,7 +28,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
   fs.writeFileSync(tmpPath, audioBuffer);
 
   try {
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getClient().audio.transcriptions.create({
       file: fs.createReadStream(tmpPath),
       model: 'whisper-1',
       language: 'ko',
@@ -79,7 +83,7 @@ ${stylePrompt || '(과거 포스팅 없음 — 자연스러운 한국어 블로�
 
   userContent.push({ type: 'text', text: textParts.join('\n\n') });
 
-  const response = await openai.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       { role: 'system', content: systemPrompt },

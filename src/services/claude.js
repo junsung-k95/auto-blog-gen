@@ -2,7 +2,11 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let _anthropic = null;
+function getClient() {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
 
 // Pricing (USD per 1M tokens) — Claude claude-opus-4-6 as of 2025
 const PRICING = {
@@ -60,7 +64,7 @@ ${stylePrompt || '(과거 포스팅 없음 — 자연스러운 한국어 블로�
   let inputTokens = 0;
   let outputTokens = 0;
 
-  const stream = anthropic.messages.stream({
+  const stream = getClient().messages.stream({
     model: MODEL,
     max_tokens: 64000,
     system: systemPrompt,
