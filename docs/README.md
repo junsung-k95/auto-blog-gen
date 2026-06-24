@@ -10,7 +10,7 @@
 | 1 | [01-scenarios.md](./01-scenarios.md) | 페르소나 · End-to-End 사용 시나리오 (7 Phase) · 현재 구현 Gap | ✅ |
 | 2 | [02-features.md](./02-features.md) | Phase별 기능 목록 · 우선순위(⭐⚪🔵) · MVP 카운트 | ✅ |
 | 3 | [03-requirements.md](./03-requirements.md) | 기능 간 연결성 · 데이터 모델(ERD) · 상태머신 · 알고리즘 · API · 외부연동 · 잡큐 · NFR | ✅ |
-| 4 | 04-ux.md *(예정)* | 화면 IA · 와이어프레임 · 인터랙션 패턴 · 디자인 토큰 · 반응형 | ⏳ |
+| 4 | [04-ux.md](./04-ux.md) | 화면 IA · 와이어프레임(10개 화면) · 인터랙션 패턴 · 디자인 토큰 · 반응형 · A11y | ✅ |
 | 5 | 05-implementation-plan.md *(예정)* | MVP 마일스톤 · 작업 분해 · 의존성 그래프 | ⏳ |
 
 ## 작성 원칙
