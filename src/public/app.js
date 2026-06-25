@@ -2082,6 +2082,9 @@ function initOnboarding() {
    M6: PWA — service worker + install prompt
    ═════════════════════════════════════════════════════════════════ */
 function initPWA() {
+  // Register the self-unregistering kill-switch SW so any browser that picked
+  // up the buggy v1/v2 service worker can clean itself up. New visitors with
+  // no prior SW: the unregister is a no-op.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
