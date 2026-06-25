@@ -126,17 +126,11 @@ function fmtInt(n) { return (n || 0).toLocaleString('ko-KR'); }
 /* ═════════════════════════════════════════════════════════════════
    VIEW: Dashboard (M1.3) — stub data, real wiring in M5
    ═════════════════════════════════════════════════════════════════ */
-function renderDashboard(root) {
-  // Stub data — will be replaced by GET /api/dashboard in M5
+async function renderDashboard(root) {
+  // Stub revenue data — replaced by GET /api/dashboard in M5
   const monthRev = 423820;
   const monthGoal = 1000000;
   const pct = Math.round((monthRev / monthGoal) * 100);
-
-  const goldenKeywords = [
-    { term: '캠핑 의자',  search: 18300, comp: '🟢 낮음', cpc: 320, score: 92, coupang: 14 },
-    { term: '갤럭시 S26', search: 240000, comp: '🟡 중간', cpc: 580, score: 78, coupang: 22 },
-    { term: '어린이날 선물', search: 95000, comp: '🟢 낮음', cpc: 410, score: 85, coupang: 31 },
-  ];
 
   const recentPosts = [
     { title: '성수동 카페 추천 5선', visits: 1243, rev: 18200 },
@@ -163,14 +157,28 @@ function renderDashboard(root) {
     kpiCard('🎯 이번 주 목표', '3/5', '주 5회 발행')
   );
 
-  // ── Golden keywords
+  // ── Golden keywords (real data, top 3 from /api/keywords/recommend)
+  const kwGrid = el('div', { class: 'keyword-cards' });
   const kwSection = el('section', { class: 'card' },
     el('div', { class: 'flex items-center justify-between', style: { marginBottom: 'var(--space-4)' } },
       el('h2', { class: 'card-title', style: { margin: 0 } }, '🔥 오늘의 황금 키워드'),
       el('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigate('/discovery') }, '전체 보기 →')
     ),
-    el('div', { class: 'keyword-cards' }, ...goldenKeywords.map(kwCard))
+    kwGrid
   );
+  (async () => {
+    try {
+      const res = await fetch('/api/keywords/recommend?limit=3');
+      const data = await res.json();
+      if (data.length) {
+        data.forEach(kw => kwGrid.appendChild(realKwCard(kw)));
+      } else {
+        kwGrid.appendChild(el('div', { class: 'muted text-sm' }, '키워드를 수집하는 중입니다.'));
+      }
+    } catch (err) {
+      kwGrid.appendChild(el('div', { class: 'muted text-sm' }, '키워드를 불러오지 못했습니다.'));
+    }
+  })();
 
   // ── Recent posts
   const postsTable = el('table', { class: 'list-table' },
@@ -256,9 +264,25 @@ function attachFab(root, icon, onClick, title) {
    ═════════════════════════════════════════════════════════════════ */
 function renderWrite(root) {
   const seed = sessionStorage.getItem('seedKeyword');
+  const seedCat = sessionStorage.getItem('seedCategory');
   sessionStorage.removeItem('seedKeyword');
+  sessionStorage.removeItem('seedCategory');
 
   const tags = seed ? [seed] : [];
+
+  if (seed) {
+    const banner = el('div', { class: 'card', style: { marginBottom: 'var(--space-4)', borderColor: 'var(--primary-500)', background: 'var(--primary-50)' } },
+      el('div', { class: 'flex items-center justify-between gap-3', style: { flexWrap: 'wrap' } },
+        el('div', {},
+          el('div', { class: 'text-xs', style: { color: 'var(--primary-600)' } }, '🎯 키워드 컨텍스트 주입됨'),
+          el('div', { class: 'font-semibold' }, seed),
+          seedCat ? el('div', { class: 'text-xs muted' }, '카테고리 · ' + seedCat) : null
+        ),
+        el('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigate('/discovery') }, '다른 키워드 보기 →')
+      )
+    );
+    root.appendChild(banner);
+  }
 
   // ── DOM
   const left = el('section', { class: 'write-panel' });
@@ -700,10 +724,135 @@ function placeholder(root, icon, title, desc, mNote) {
   ));
 }
 
-function renderDiscovery(root) {
-  placeholder(root, '🔍', '키워드 발굴',
-    '검색량 × 경쟁도 × 수익성 점수로 정렬된 황금 키워드 카드가 여기에 표시됩니다.',
-    'M2 — Data & Discovery');
+async function renderDiscovery(root) {
+  // Filter bar
+  const filter = el('div', { class: 'card flex items-center gap-3', style: { flexWrap: 'wrap' } });
+  const catSelect = el('select', { class: 'select', style: { width: 'auto' } },
+    el('option', { value: 'all' }, '전체 카테고리')
+  );
+  const limitInput = el('input', { class: 'input', type: 'number', value: '24', min: '6', max: '60', style: { width: '80px' } });
+  const refreshBtn = el('button', { class: 'btn btn-secondary btn-sm' }, '🔄 새로고침');
+  filter.appendChild(el('span', { class: 'text-xs muted' }, '카테고리'));
+  filter.appendChild(catSelect);
+  filter.appendChild(el('span', { class: 'text-xs muted' }, '개수'));
+  filter.appendChild(limitInput);
+  filter.appendChild(refreshBtn);
+  root.appendChild(filter);
+
+  const gridWrap = el('div', { style: { marginTop: 'var(--space-5)' } });
+  root.appendChild(gridWrap);
+
+  async function load() {
+    gridWrap.innerHTML = '<div class="muted text-sm">불러오는 중...</div>';
+    const params = new URLSearchParams();
+    if (catSelect.value && catSelect.value !== 'all') params.set('category', catSelect.value);
+    params.set('limit', limitInput.value || '24');
+    try {
+      const res = await fetch('/api/keywords/recommend?' + params.toString());
+      const data = await res.json();
+      if (!data.length) {
+        gridWrap.innerHTML = '';
+        gridWrap.appendChild(el('div', { class: 'empty-state' },
+          el('div', { class: 'empty-state-icon' }, '🌱'),
+          el('div', { class: 'empty-state-title' }, '키워드가 아직 없어요'),
+          el('div', { class: 'empty-state-desc' }, '새로고침을 눌러 키워드 수집을 시작하거나, 설정에서 네이버 OpenAPI 키를 등록하세요.'),
+        ));
+        return;
+      }
+      // Populate category options (once per load)
+      const cats = [...new Set(data.map(k => k.category).filter(Boolean))];
+      while (catSelect.options.length > 1) catSelect.remove(1);
+      cats.forEach(c => catSelect.appendChild(el('option', { value: c }, c)));
+
+      const grid = el('div', { class: 'keyword-cards' });
+      data.forEach(kw => grid.appendChild(realKwCard(kw)));
+      gridWrap.innerHTML = '';
+      gridWrap.appendChild(grid);
+    } catch (err) {
+      gridWrap.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div>
+        <div class="empty-state-title">불러오기 실패</div>
+        <div class="empty-state-desc">${err.message}</div></div>`;
+    }
+  }
+
+  catSelect.addEventListener('change', load);
+  refreshBtn.addEventListener('click', async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<span class="spinner dark"></span> 새로고침';
+    try {
+      const r = await fetch('/api/keywords/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      await r.json();
+      toast('새로고침 작업을 큐에 넣었습니다 (서버 배경 처리)', 'info');
+      await load();
+    } catch (err) {
+      toast('실패: ' + err.message, 'error');
+    } finally {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '🔄 새로고침';
+    }
+  });
+
+  await load();
+}
+
+function realKwCard(kw) {
+  const s = kw.signals || {};
+  const compLabel = s.competitionRatio == null ? '— '
+    : s.competitionRatio < 0.5 ? '🟢 낮음'
+    : s.competitionRatio < 1.5 ? '🟡 중간' : '🔴 높음';
+  const growthLabel = s.trendGrowth4w == null ? '—'
+    : s.trendGrowth4w > 1.15 ? `↑ +${Math.round((s.trendGrowth4w - 1) * 100)}%`
+    : s.trendGrowth4w < 0.85 ? `↓ -${Math.round((1 - s.trendGrowth4w) * 100)}%`
+    : '→ 보합';
+
+  return el('div', { class: 'kw-card' },
+    el('div', { class: 'kw-head' },
+      el('div', {},
+        el('div', { class: 'kw-term' }, kw.term),
+        kw.category ? el('span', { class: 'chip', style: { marginTop: '4px' } }, kw.category) : null
+      ),
+      el('div', { class: 'kw-score' }, '★ ' + (kw.score ?? '—'))
+    ),
+    el('div', { class: 'kw-stats' },
+      el('div', {}, el('div', { class: 'kw-stat-label' }, '검색량'),
+        el('div', { class: 'kw-stat-value' }, fmtInt(s.monthlySearch))),
+      el('div', {}, el('div', { class: 'kw-stat-label' }, '경쟁'),
+        el('div', { class: 'kw-stat-value' }, compLabel)),
+      el('div', {}, el('div', { class: 'kw-stat-label' }, '트렌드'),
+        el('div', { class: 'kw-stat-value' }, growthLabel)),
+      el('div', {}, el('div', { class: 'kw-stat-label' }, '쿠팡'),
+        el('div', { class: 'kw-stat-value' }, '💰 ' + (s.coupangMatches || 0)))
+    ),
+    el('div', { class: 'kw-actions' },
+      el('button', {
+        class: 'btn btn-primary btn-sm',
+        onclick: () => {
+          sessionStorage.setItem('seedKeyword', kw.term);
+          sessionStorage.setItem('seedCategory', kw.category || '');
+          navigate('/write');
+        }
+      }, '이걸로 쓰기 →'),
+      el('button', {
+        class: 'btn btn-secondary btn-sm',
+        title: '북마크 (로그인 필요)',
+        onclick: async (e) => {
+          try {
+            const r = await fetch(`/api/keywords/${kw.id}/bookmark`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ state: 'saved' }),
+            });
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            e.target.textContent = '★';
+            toast('북마크 저장됨', 'success');
+          } catch (err) {
+            toast(err.message, 'error');
+          }
+        }
+      }, '☆')
+    )
+  );
 }
 function renderInbox(root) {
   placeholder(root, '📋', '검수 대기함',
