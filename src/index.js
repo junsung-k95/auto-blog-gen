@@ -6,12 +6,19 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 
+const { migrate } = require('./db/migrations');
+const keywords = require('./services/keywords');
+const jobs = require('./services/jobQueue');
+const { authMiddleware } = require('./services/auth');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure data/ directory exists for history storage
+// Ensure data/ exists, run migrations, seed demo keywords if DB is empty.
 const dataDir = path.join(__dirname, '../data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+migrate();
+try { keywords.seedDemo(); } catch (e) { console.warn('[seed]', e.message); }
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -20,17 +27,21 @@ const upload = multer({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api', authMiddleware); // soft mode: req.user may be null
 
 // Routes
+app.use('/api', require('./routes/auth'));
+app.use('/api', require('./routes/blogs'));
+app.use('/api', require('./routes/keywords'));
 app.use('/api', require('./routes/transcribe')(upload));
 app.use('/api', require('./routes/generate')(upload));
 app.use('/api', require('./routes/publish'));
 app.use('/api', require('./routes/trends'));
 app.use('/api', require('./routes/history'));
 
-// Health check
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.listen(PORT, () => {
   console.log(`auto-blog-gen running on http://localhost:${PORT}`);
+  jobs.start();
 });
