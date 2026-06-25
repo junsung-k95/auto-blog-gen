@@ -359,19 +359,36 @@ function renderWrite(root) {
     lengthSelect
   ));
 
-  // Shopping Connect URL
+  // ── 상품 링크 섹션 (두 칸)
+  const productInfoBox = el('div', { class: 'card', style: { padding: 'var(--space-4)', marginBottom: 'var(--space-3)', background: 'var(--surface-alt)', border: '1px solid var(--border)', borderRadius: '10px' } });
+  productInfoBox.appendChild(el('div', { class: 'font-semibold text-sm', style: { marginBottom: 'var(--space-3)' } }, '🛍️ 상품 링크'));
+
+  // 1) 상품 정보 링크
+  const productPageInput = el('input', {
+    class: 'input',
+    type: 'url',
+    placeholder: '상품 페이지 URL (smartstore.naver.com/...)',
+  });
+  const productFetchStatus = el('span', { class: 'text-xs muted' });
+  productInfoBox.appendChild(el('div', { class: 'field', style: { marginBottom: 'var(--space-3)' } },
+    el('div', { class: 'field-label' }, '① 상품정보 링크'),
+    el('div', { class: 'text-xs muted', style: { marginBottom: '4px' } }, 'AI가 이 페이지에서 상품 정보를 읽어 리뷰에 활용합니다'),
+    el('div', { class: 'flex gap-2 items-center' }, productPageInput, productFetchStatus)
+  ));
+
+  // 2) 수익용 링크 (쇼핑 커넥트)
   const shoppingConnectInput = el('input', {
     class: 'input',
     type: 'url',
-    placeholder: '쇼핑 커넥트 발급 링크 붙여넣기 (naver.me/...)',
+    placeholder: '수익용 링크 (naver.me/...)',
   });
-  left.appendChild(el('div', { class: 'field' },
-    el('div', { class: 'field-label' }, '🛍️ 쇼핑 커넥트 링크 (내돈내산 리뷰용)'),
-    el('div', { class: 'text-xs muted', style: { marginBottom: '6px' } },
-      '발급 링크 관리 페이지에서 복사한 URL을 붙여넣으면 포스팅에 자동 삽입됩니다.'
-    ),
+  productInfoBox.appendChild(el('div', { class: 'field' },
+    el('div', { class: 'field-label' }, '② 수익용 링크 (쇼핑 커넥트)'),
+    el('div', { class: 'text-xs muted', style: { marginBottom: '4px' } }, '발급 링크 관리에서 복사 → 포스팅 본문에 자동 삽입'),
     shoppingConnectInput
   ));
+
+  left.appendChild(productInfoBox);
 
   // Disclosure
   const disclosureSelect = el('select', { class: 'select' },
@@ -593,6 +610,8 @@ function renderWrite(root) {
     formData.append('hasCoupang', String(hasCoupangLinks()));
     const scUrl = shoppingConnectInput.value.trim();
     if (scUrl) formData.append('shoppingConnectUrl', scUrl);
+    const ppUrl = productPageInput.value.trim();
+    if (ppUrl) formData.append('productPageUrl', ppUrl);
     uploadedImages.forEach(img =>
       formData.append('images', new Blob([img.buffer], { type: img.mimeType }), img.file.name)
     );

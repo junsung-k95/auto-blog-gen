@@ -7,6 +7,31 @@ const claudeService = require('../services/claude');
 const { loadStyleExamples, buildStylePrompt } = require('../services/pastPosts');
 const { disclosureHtml, resolveDisclosure } = require('../services/disclosure');
 
+async function fetchProductText(url) {
+  if (!url) return '';
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    const html = await res.text();
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3000);
+    return text;
+  } catch {
+    return '';
+  }
+}
+
 const LENGTH_PRESETS = {
   info:    { label: '정보형',     targetChars: 1500, instruction: '정보 전달이 중심인 1500자 내외로 작성. 소제목 3개 이상, 각 섹션 200~400자.' },
   review:  { label: '후기형',     targetChars: 800,  instruction: '후기·일상 톤으로 800자 내외, 친근체. 사진을 중심에 두고 짧은 단락으로 구성.' },
@@ -64,16 +89,23 @@ module.exports = function (upload) {
       const disclosureKind = req.body.disclosureKind || 'none';
       const hasCoupang = req.body.hasCoupang === 'true' || req.body.hasCoupang === true;
       const shoppingConnectUrl = req.body.shoppingConnectUrl || '';
+      const productPageUrl = req.body.productPageUrl || '';
       const imageBuffers = (req.files || []).map(f => f.buffer);
 
-      const examples = await loadStyleExamples(5);
+      const [examples, productText] = await Promise.all([
+        loadStyleExamples(5),
+        fetchProductText(productPageUrl),
+      ]);
       const stylePrompt = buildStylePrompt(examples);
 
       // Compose enriched memo so the existing service signatures don't change
       const contextBlock = buildContextPrompt({
         seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang, shoppingConnectUrl,
       });
-      const enrichedMemo = [memo, '─── 작성 가이드 ───', '- ' + contextBlock]
+      const productBlock = productText
+        ? `─── 상품 페이지 정보 (자동 추출) ───\n${productText}`
+        : '';
+      const enrichedMemo = [memo, productBlock, '─── 작성 가이드 ───', '- ' + contextBlock]
         .filter(Boolean).join('\n\n');
 
       let result;
