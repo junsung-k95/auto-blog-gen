@@ -397,10 +397,15 @@ function renderWrite(root) {
   // ── RIGHT: Insights
   right.appendChild(el('h3', {}, '인사이트'));
 
-  const seoBlock = el('div', { class: 'insight-block' },
+  // ── SEO score block (live, recomputes on demand)
+  const seoBlock = el('div', { class: 'insight-block' });
+  const seoBody = el('div', { class: 'mt-2 text-sm muted' }, '본문 생성 후 자동 채점됩니다.');
+  seoBlock.appendChild(el('div', { class: 'flex items-center justify-between' },
     el('div', { class: 'insight-block-title' }, '📊 SEO 점수'),
-    el('div', { class: 'muted text-sm' }, 'M3에서 활성화됩니다.')
-  );
+    el('button', { class: 'btn btn-ghost btn-sm', id: 'seoRefreshBtn' }, '↻')
+  ));
+  seoBlock.appendChild(seoBody);
+
   const trendBlock = el('div', { class: 'insight-block' },
     el('div', { class: 'insight-block-title' }, '📈 트렌드 분석'),
     el('button', { class: 'btn btn-secondary btn-sm', id: 'trendBtn' }, '분석 실행')
@@ -408,10 +413,14 @@ function renderWrite(root) {
   const trendResult = el('div', { class: 'text-sm', style: { display: 'none' } });
   trendBlock.appendChild(trendResult);
 
-  const couponBlock = el('div', { class: 'insight-block' },
+  // ── Coupang recommended-products block
+  const couponBlock = el('div', { class: 'insight-block' });
+  couponBlock.appendChild(el('div', { class: 'flex items-center justify-between' },
     el('div', { class: 'insight-block-title' }, '💰 쿠팡 추천 상품'),
-    el('div', { class: 'muted text-sm' }, 'M3에서 활성화됩니다.')
-  );
+    el('button', { class: 'btn btn-secondary btn-sm', id: 'matchBtn' }, '매칭 실행')
+  ));
+  const couponBody = el('div', { class: 'mt-2 text-sm muted' }, '본문 생성 후 매칭 실행을 누르세요.');
+  couponBlock.appendChild(couponBody);
 
   const usageBlock = el('div', { class: 'insight-block', id: 'usageBlock', style: { display: 'none' } });
 
@@ -554,6 +563,12 @@ function renderWrite(root) {
     formData.append('transcript', transcript);
     formData.append('memo', memo);
     formData.append('aiProvider', document.getElementById('aiProvider').value);
+    if (seed) formData.append('seedKeyword', seed);
+    const secondaries = tags.filter(t => t !== seed);
+    if (secondaries.length) formData.append('secondaryKeywords', secondaries.join(','));
+    formData.append('lengthPreset', lengthSelect.value);
+    formData.append('disclosureKind', disclosureSelect.value);
+    formData.append('hasCoupang', String(hasCoupangLinks()));
     uploadedImages.forEach(img =>
       formData.append('images', new Blob([img.buffer], { type: img.mimeType }), img.file.name)
     );
@@ -587,6 +602,7 @@ function renderWrite(root) {
               showUsage(data.usage, data.provider);
               const h2 = previewContent.querySelector('h2');
               if (h2 && !titleInput.textContent.trim()) titleInput.textContent = h2.textContent;
+              refreshSeo();
             }
           } catch (_) {}
         }
@@ -599,6 +615,164 @@ function renderWrite(root) {
       generateBtn.innerHTML = '✨ 포스팅 생성';
     }
   });
+
+  function hasCoupangLinks() {
+    const html = isEditMode ? previewContent.innerHTML : generatedContent;
+    return /coupang\.com|partners\.coupang\.com/.test(html);
+  }
+
+  async function refreshSeo() {
+    const title = titleInput.textContent.trim();
+    const content = isEditMode ? previewContent.innerHTML : generatedContent;
+    if (!title && !content) return;
+    seoBody.innerHTML = '<span class="muted">채점 중...</span>';
+    const tagsArr = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(Boolean);
+    try {
+      const res = await fetch('/api/seo/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title, content,
+          primaryKeyword: seed || tags[0] || '',
+          tags: tagsArr,
+          disclosureKind: disclosureSelect.value,
+          hasCoupangLinks: hasCoupangLinks(),
+        }),
+      });
+      const data = await res.json();
+      renderSeo(data);
+    } catch (err) {
+      seoBody.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`;
+    }
+  }
+
+  function renderSeo(data) {
+    const color = data.total >= 80 ? 'var(--success)' : data.total >= 60 ? 'var(--warning)' : 'var(--danger)';
+    const items = data.items.map(it => {
+      const ok = it.got >= it.max ? '✅' : it.got >= it.max * 0.6 ? '🟡' : '⚪';
+      return `<li style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span>${ok} ${it.label}</span><span class="muted">${it.got}/${it.max}</span></li>`;
+    }).join('');
+    const flags = (data.flags || []).map(f => {
+      const c = f.severity === 'danger' ? 'badge-danger' : 'badge-warning';
+      return `<div class="badge ${c}" style="margin:2px 4px 2px 0">⚠️ ${f.message}</div>`;
+    }).join('');
+    const advice = (data.advice || []).map(a => `<li style="font-size:12px">${a}</li>`).join('');
+    seoBody.innerHTML = `
+      <div style="display:flex;align-items:baseline;gap:8px;margin:6px 0 10px;">
+        <span style="font-size:28px;font-weight:800;color:${color}">${data.total}</span>
+        <span class="muted text-sm">/100</span>
+      </div>
+      ${flags ? `<div style="margin-bottom:10px">${flags}</div>` : ''}
+      ${data.disclosure && data.disclosure.missing ? `<div class="badge badge-danger" style="margin-bottom:10px">⚠️ 공시 누락: ${data.disclosure.kind}</div>` : ''}
+      <details style="margin-bottom:8px"><summary class="text-xs muted" style="cursor:pointer">항목별 보기</summary>
+        <ul style="list-style:none;padding:0;margin-top:6px">${items}</ul>
+      </details>
+      ${advice ? `<div class="text-xs muted">💡 권장</div><ul style="margin-top:4px;padding-left:18px">${advice}</ul>` : ''}
+    `;
+  }
+
+  document.getElementById('seoRefreshBtn').addEventListener('click', refreshSeo);
+
+  // ── Coupang product matching
+  document.getElementById('matchBtn').addEventListener('click', async () => {
+    const title = titleInput.textContent.trim();
+    const content = isEditMode ? previewContent.innerHTML : generatedContent;
+    if (!title && !content) {
+      toast('먼저 포스팅을 생성해주세요', 'error');
+      return;
+    }
+    const btn = document.getElementById('matchBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner dark"></span> 매칭 중...';
+    couponBody.innerHTML = '<span class="muted">분석 중...</span>';
+    try {
+      const res = await fetch('/api/coupang/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, seedKeyword: seed, max: 5 }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      renderCoupang(data);
+    } catch (err) {
+      couponBody.innerHTML = `<span style="color:var(--danger)">${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '매칭 실행';
+    }
+  });
+
+  function renderCoupang(data) {
+    if (!data.products || !data.products.length) {
+      couponBody.innerHTML = '<span class="muted">매칭된 상품이 없습니다.</span>';
+      return;
+    }
+    const credBadge = data.hasApiCreds
+      ? '<span class="badge badge-success">파트너스 API 활성</span>'
+      : '<span class="badge badge-warning">검색 URL 폴백</span>';
+    const queries = data.queries.map(q => `<span class="chip sm">${q}</span>`).join(' ');
+    const cards = data.products.map((p, i) => {
+      const price = p.price ? `₩${Number(p.price).toLocaleString('ko-KR')}` : '';
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:center;">
+        ${p.productImage ? `<img src="${p.productImage}" style="width:48px;height:48px;border-radius:6px;object-fit:cover" />` : '<div style="width:48px;height:48px;background:var(--surface-alt);border-radius:6px;display:grid;place-items:center;font-size:18px">🛒</div>'}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+          <div style="font-size:11px" class="muted">${price}${p._fallback ? ' · 폴백 검색' : ''}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" data-idx="${i}">📌 본문 삽입</button>
+      </div>`;
+    }).join('');
+    couponBody.innerHTML = `
+      <div class="text-xs muted">${credBadge} · 쿼리: ${queries}</div>
+      <div class="mt-3">${cards}</div>
+    `;
+    couponBody.querySelectorAll('button[data-idx]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const idx = +btn.dataset.idx;
+        const p = data.products[idx];
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner dark"></span>';
+        try {
+          const r = await fetch('/api/coupang/deeplink', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productUrl: p.productUrl, product: p }),
+          });
+          const dl = await r.json();
+          if (dl.error) throw new Error(dl.error);
+          insertAtCursor(dl.html || `<a href="${dl.url}" target="_blank" rel="nofollow sponsored">${p.name}</a>`);
+          toast('상품 카드 삽입됨', 'success');
+          refreshSeo();
+        } catch (err) {
+          toast(err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '📌 본문 삽입';
+        }
+      });
+    });
+  }
+
+  function insertAtCursor(html) {
+    if (!isEditMode) {
+      isEditMode = true;
+      previewContent.contentEditable = 'true';
+      previewContent.classList.add('edit-mode');
+      document.getElementById('editToggle').textContent = '✅ 완료';
+    }
+    previewContent.focus();
+    const sel = window.getSelection();
+    if (sel.rangeCount && previewContent.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const frag = document.createRange().createContextualFragment(html);
+      range.insertNode(frag);
+    } else {
+      previewContent.insertAdjacentHTML('beforeend', html);
+    }
+    generatedContent = previewContent.innerHTML;
+  }
 
   function showUsage(usage, provider) {
     if (!usage) return;
@@ -938,18 +1112,110 @@ function tabBlog(body) {
   body.appendChild(card);
 }
 
-function tabChannels(body) {
+async function tabChannels(body) {
   const card = el('div', { class: 'card' });
   card.appendChild(el('h2', { class: 'card-title' }, '💰 수익 채널'));
-  card.appendChild(settingRow('📺 애드포스트', '일별 수익 자동 동기화',
-    el('span', { class: 'chip' }, 'M3에서 활성화')));
-  card.appendChild(settingRow('🛒 쿠팡 파트너스', '본문 자동 상품 매칭 + 단축링크',
-    el('span', { class: 'chip' }, 'M3에서 활성화')));
+
+  const status = el('div', { class: 'text-xs muted', style: { marginBottom: '12px' } },
+    '로그인 후 채널별 자격증명을 저장할 수 있습니다. (자격증명은 AES-256으로 암호화 저장)');
+  card.appendChild(status);
+
+  // Try to load existing channels (logged in)
+  let connected = {};
+  try {
+    const token = localStorage.getItem('jwt');
+    const res = await fetch('/api/channels', {
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    if (res.ok) {
+      const list = await res.json();
+      list.forEach(c => { connected[c.kind] = c; });
+    } else if (res.status === 401) {
+      status.textContent = '⚠️ 로그인 후 채널 등록이 가능합니다. (M3 단계에서는 환경변수도 함께 사용됩니다.)';
+    }
+  } catch {}
+
+  card.appendChild(channelFormRow({
+    kind: 'coupang',
+    label: '🛒 쿠팡 파트너스',
+    desc: '본문 자동 상품 매칭 + 단축링크',
+    fields: [
+      { name: 'accessKey', label: 'Access Key', type: 'text' },
+      { name: 'secretKey', label: 'Secret Key', type: 'password' },
+      { name: 'subId',     label: 'Sub ID (선택)', type: 'text' },
+    ],
+    existing: connected.coupang,
+  }));
+
+  card.appendChild(channelFormRow({
+    kind: 'adpost',
+    label: '📺 애드포스트',
+    desc: '일별 수익 동기화 (M5에서 자동화)',
+    fields: [
+      { name: 'memberId', label: '회원 ID', type: 'text' },
+    ],
+    existing: connected.adpost,
+  }));
+
   card.appendChild(settingRow('🤝 협찬 메일 (Gmail)', '제안 메일 자동 분류',
     el('span', { class: 'chip' }, 'M6에서 활성화')));
   card.appendChild(settingRow('💱 알리/아마존', '해외 제휴 채널',
     el('span', { class: 'chip' }, 'Post-MVP')));
+
   body.appendChild(card);
+}
+
+function channelFormRow({ kind, label, desc, fields, existing }) {
+  const row = el('div', { class: 'setting-row', style: { alignItems: 'flex-start' } });
+  const left = el('div', {},
+    el('div', { class: 'setting-row-label' }, label),
+    el('div', { class: 'setting-row-desc' }, desc),
+    existing ? el('div', { class: 'badge badge-success mt-2' }, '연결됨') : null
+  );
+  const formWrap = el('div', { style: { minWidth: '280px' } });
+  const inputs = {};
+  fields.forEach(f => {
+    const wrap = el('div', { class: 'field', style: { marginBottom: '6px' } },
+      el('label', { class: 'field-label' }, f.label),
+      el('input', {
+        class: 'input', type: f.type, name: f.name,
+        placeholder: existing?.credentials?.[f.name] || ''
+      })
+    );
+    inputs[f.name] = wrap.querySelector('input');
+    formWrap.appendChild(wrap);
+  });
+  const save = el('button', { class: 'btn btn-primary btn-sm' }, existing ? '업데이트' : '연결');
+  formWrap.appendChild(save);
+  save.addEventListener('click', async () => {
+    const creds = {};
+    for (const [k, inp] of Object.entries(inputs)) if (inp.value) creds[k] = inp.value;
+    if (!Object.keys(creds).length) { toast('값을 입력해주세요', 'error'); return; }
+    save.disabled = true;
+    save.innerHTML = '<span class="spinner"></span>';
+    try {
+      const token = localStorage.getItem('jwt');
+      const r = await fetch(`/api/channels/${kind}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        },
+        body: JSON.stringify(creds),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      toast(label + ' 저장됨', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      save.disabled = false;
+      save.textContent = existing ? '업데이트' : '연결';
+    }
+  });
+  row.appendChild(left);
+  row.appendChild(formWrap);
+  return row;
 }
 
 function tabAI(body) {
