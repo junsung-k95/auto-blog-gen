@@ -10,9 +10,10 @@ function getClient() {
   return _openai;
 }
 
-// Pricing (USD per 1M tokens) — GPT-4o as of 2025
+// Pricing (USD per 1M tokens)
 const PRICING = {
-  'gpt-4o': { input: 2.50, output: 10.00 },
+  'gpt-4o':           { input: 2.50,  output: 10.00 },
+  'codex-mini-latest': { input: 1.50,  output: 6.00  },
 };
 
 /**
@@ -40,14 +41,15 @@ async function transcribeAudio(audioBuffer, mimeType) {
 }
 
 /**
- * Generate a Korean blog post using GPT-4o.
+ * Generate a Korean blog post using GPT-4o or Codex.
  * @param {string} transcript - voice transcription text
  * @param {Buffer[]} imageBuffers - array of image buffers
  * @param {string} stylePrompt - writing style examples from past posts
  * @param {string} memo - additional short notes
+ * @param {string} [model] - model override ('codex-mini-latest' | 'gpt-4o')
  * @returns {Promise<{content: string, usage: {input_tokens: number, output_tokens: number, cost_usd: number}}>}
  */
-async function generateBlogPost(transcript, imageBuffers, stylePrompt, memo) {
+async function generateBlogPost(transcript, imageBuffers, stylePrompt, memo, model = 'gpt-4o') {
   const systemPrompt = `당신은 한국 블로거를 위해 포스팅을 대신 작성해주는 AI 어시스턴트입니다.
 
 아래는 이 블로거가 과거에 작성한 포스팅 예시입니다. 이 사람의 말투, 문체, 글쓰기 스타일을 반드시 따라주세요:
@@ -84,7 +86,7 @@ ${stylePrompt || '(과거 포스팅 없음 — 자연스러운 한국어 블로�
   userContent.push({ type: 'text', text: textParts.join('\n\n') });
 
   const response = await getClient().chat.completions.create({
-    model: 'gpt-4o',
+    model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userContent },
@@ -95,7 +97,7 @@ ${stylePrompt || '(과거 포스팅 없음 — 자연스러운 한국어 블로�
   const content = response.choices[0].message.content;
   const inputTokens = response.usage.prompt_tokens;
   const outputTokens = response.usage.completion_tokens;
-  const pricing = PRICING['gpt-4o'];
+  const pricing = PRICING[model] || PRICING['gpt-4o'];
   const costUsd = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
 
   return {

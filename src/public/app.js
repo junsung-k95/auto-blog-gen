@@ -800,7 +800,7 @@ function renderWrite(root) {
 
   function showUsage(usage, provider) {
     if (!usage) return;
-    const model = provider === 'claude' ? 'Claude' : 'GPT-4o';
+    const model = provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex (codex-mini-latest)' : 'GPT-4o';
     usageBlock.innerHTML = `
       <div class="insight-block-title">💸 사용량 / 비용</div>
       <div class="text-sm">${model}</div>

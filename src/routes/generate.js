@@ -82,9 +82,14 @@ module.exports = function (upload) {
           transcript, imageBuffers, stylePrompt, enrichedMemo,
           (chunk) => sendEvent({ chunk })
         );
+      } else if (provider === 'codex') {
+        result = await openaiService.generateBlogPost(
+          transcript, imageBuffers, stylePrompt, enrichedMemo, 'codex-mini-latest'
+        );
+        sendEvent({ chunk: result.content });
       } else {
         result = await openaiService.generateBlogPost(
-          transcript, imageBuffers, stylePrompt, enrichedMemo
+          transcript, imageBuffers, stylePrompt, enrichedMemo, 'gpt-4o'
         );
         sendEvent({ chunk: result.content });
       }
