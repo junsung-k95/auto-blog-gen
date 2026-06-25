@@ -380,13 +380,12 @@ function renderWrite(root) {
   const titleInput = el('div', { class: 'preview-title', contenteditable: 'true', placeholder: '포스팅 제목을 입력하세요' });
   if (seed) titleInput.textContent = seed + ' 관련 포스팅';
   const previewContent = el('div', { class: 'preview-content' });
-  const previewActions = el('div', { class: 'flex items-center gap-2', style: { marginTop: 'var(--space-3)' } },
+  const previewActions = el('div', { class: 'flex items-center gap-2', style: { marginTop: 'var(--space-3)', flexWrap: 'wrap' } },
     el('button', { class: 'btn btn-secondary btn-sm', id: 'editToggle' }, '✏️ 편집'),
-    el('input', { class: 'input', id: 'tagsInput', placeholder: '태그 (쉼표로 구분)', style: { flex: '1' } }),
-    el('label', { class: 'flex items-center gap-2 text-sm' },
-      el('input', { type: 'checkbox', id: 'draftMode' }), '임시저장'
-    ),
-    el('button', { class: 'btn btn-success', id: 'publishBtn' }, '📤 발행')
+    el('input', { class: 'input', id: 'tagsInput', placeholder: '태그 (쉼표로 구분)', style: { flex: '1', minWidth: '160px' } }),
+    el('button', { class: 'btn btn-ghost', id: 'saveDraftBtn' }, '💾 임시저장'),
+    el('button', { class: 'btn btn-secondary', id: 'scheduleBtn' }, '📅 예약 발행'),
+    el('button', { class: 'btn btn-success', id: 'publishBtn' }, '📤 즉시 발행')
   );
   const publishResult = el('div', { class: 'mt-3', style: { display: 'none' } });
   center.appendChild(titleInput);
@@ -836,16 +835,165 @@ function renderWrite(root) {
     }
   });
 
-  // Publish
-  document.getElementById('publishBtn').addEventListener('click', async () => {
+  // ── Local state for the post being edited (persists draft/schedule/publish)
+  let currentPostId = sessionStorage.getItem('loadPostId') || null;
+  sessionStorage.removeItem('loadPostId');
+
+  // If we loaded an existing post from inbox, fetch and populate
+  if (currentPostId) {
+    fetch('/api/posts/' + currentPostId).then(r => r.json()).then(p => {
+      if (p?.id) {
+        titleInput.textContent = p.title || '';
+        previewContent.innerHTML = p.contentHtml || '';
+        generatedContent = p.contentHtml || '';
+        document.getElementById('tagsInput').value = (p.tags || []).join(', ');
+        toast('초안을 불러왔습니다', 'info');
+      }
+    }).catch(() => {});
+  }
+
+  function readPostFromUI() {
     const title = titleInput.textContent.trim() || '블로그 포스팅';
     const content = isEditMode ? previewContent.innerHTML : generatedContent;
     const tagsArr = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(Boolean);
-    const publish = !document.getElementById('draftMode').checked;
-    if (!content) {
-      toast('생성된 포스팅이 없습니다', 'error');
-      return;
+    return { title, content, tags: tagsArr };
+  }
+
+  async function upsertPost(extra = {}) {
+    const { title, content, tags: tagsArr } = readPostFromUI();
+    const seoSnapshot = await fetchSeoSnapshot(title, content, tagsArr);
+    const body = {
+      title,
+      contentHtml: content,
+      tags: tagsArr,
+      seoScore: seoSnapshot?.total ?? null,
+      riskFlags: (seoSnapshot?.flags || []).map(f => f.code),
+      disclosureKind: disclosureSelect.value,
+      aiProvider: document.getElementById('aiProvider').value,
+      ...extra,
+    };
+    let res;
+    if (currentPostId) {
+      res = await fetch('/api/posts/' + currentPostId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } else {
+      res = await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
     }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    currentPostId = data.id;
+    return data;
+  }
+
+  async function fetchSeoSnapshot(title, content, tagsArr) {
+    try {
+      const r = await fetch('/api/seo/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title, content,
+          primaryKeyword: seed || tagsArr[0] || '',
+          tags: tagsArr,
+          disclosureKind: disclosureSelect.value,
+          hasCoupangLinks: hasCoupangLinks(),
+        }),
+      });
+      return await r.json();
+    } catch { return null; }
+  }
+
+  // ── Save draft
+  document.getElementById('saveDraftBtn').addEventListener('click', async () => {
+    const { content } = readPostFromUI();
+    if (!content) { toast('내용이 비어 있습니다', 'error'); return; }
+    const btn = document.getElementById('saveDraftBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner dark"></span>';
+    try {
+      const post = await upsertPost({ status: 'draft' });
+      toast('💾 임시저장됨 · #' + post.id.slice(0, 6), 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '💾 임시저장';
+    }
+  });
+
+  // ── Schedule
+  document.getElementById('scheduleBtn').addEventListener('click', () => {
+    const { content } = readPostFromUI();
+    if (!content) { toast('내용이 비어 있습니다', 'error'); return; }
+
+    const seedAt = sessionStorage.getItem('seedScheduledAt');
+    sessionStorage.removeItem('seedScheduledAt');
+    const init = seedAt ? new Date(seedAt) : (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(7, 0, 0, 0);
+      return d;
+    })();
+
+    const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+    const dtInput = el('input', { class: 'input', type: 'datetime-local',
+      value: toDatetimeLocal(init) });
+    const goldenHints = el('div', { class: 'flex gap-2', style: { flexWrap: 'wrap' } },
+      el('button', { class: 'btn btn-secondary btn-sm', onclick: () => setQuick(7, '내일 오전 7시') }, '🌅 내일 07:00'),
+      el('button', { class: 'btn btn-secondary btn-sm', onclick: () => setQuick(21, '오늘 저녁 9시') }, '🌙 오늘 21:00'),
+      el('button', { class: 'btn btn-secondary btn-sm', onclick: () => setQuickDay(7, 7) }, '7일 후 07:00'),
+    );
+    function setQuick(hour, label) {
+      const d = new Date();
+      if (hour <= d.getHours()) d.setDate(d.getDate() + 1);
+      d.setHours(hour, 0, 0, 0);
+      dtInput.value = toDatetimeLocal(d);
+    }
+    function setQuickDay(addDays, hour) {
+      const d = new Date(); d.setDate(d.getDate() + addDays); d.setHours(hour, 0, 0, 0);
+      dtInput.value = toDatetimeLocal(d);
+    }
+    const confirmBtn = el('button', { class: 'btn btn-primary' }, '📅 예약하기');
+    const cancelBtn = el('button', { class: 'btn btn-ghost' }, '취소');
+    const modal = el('div', { class: 'modal' },
+      el('div', { class: 'modal-title' }, '📅 예약 발행'),
+      el('div', { class: 'text-sm muted' }, '예약 시각이 도래하면 자동으로 네이버 블로그에 발행됩니다.'),
+      goldenHints,
+      el('div', { class: 'field' }, el('div', { class: 'field-label' }, '발행 일시'), dtInput),
+      el('div', { class: 'flex gap-2 justify-between' }, cancelBtn, confirmBtn),
+    );
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    cancelBtn.onclick = () => overlay.remove();
+    confirmBtn.onclick = async () => {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<span class="spinner"></span> 예약 중...';
+      try {
+        const at = new Date(dtInput.value).toISOString();
+        const post = await upsertPost({ status: 'scheduled', scheduledAt: at });
+        toast('📅 예약 발행 등록됨 · ' + new Date(at).toLocaleString('ko-KR'), 'success');
+        overlay.remove();
+        publishResult.innerHTML = `<div class="toast info" style="position:static">📅 예약됨: ${new Date(at).toLocaleString('ko-KR')}</div>`;
+        publishResult.style.display = 'block';
+      } catch (err) {
+        toast(err.message, 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '📅 예약하기';
+      }
+    };
+  });
+
+  // ── Publish now
+  document.getElementById('publishBtn').addEventListener('click', async () => {
+    const { title, content, tags: tagsArr } = readPostFromUI();
+    if (!content) { toast('내용이 없습니다', 'error'); return; }
     const btn = document.getElementById('publishBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> 업로드 중...';
@@ -858,13 +1006,20 @@ function renderWrite(root) {
     }));
 
     try {
+      // Save snapshot to DB so it's tracked even if the publish call fails
+      await upsertPost({ status: 'review' });
+
       const res = await fetch('/api/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, tags: tagsArr, publish, images: imagesPayload }),
+        body: JSON.stringify({ title, content, tags: tagsArr, publish: true, images: imagesPayload }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+
+      // Mark our local post as published
+      await upsertPost({ status: 'published', publishedAt: new Date().toISOString(), naverPostId: data.postId });
+
       publishResult.innerHTML = `<div class="toast success" style="position:static">✅ 업로드 완료! (포스팅 ID: ${data.postId})</div>`;
       publishResult.style.display = 'block';
       toast('네이버 블로그 발행 완료 🎉', 'success');
@@ -874,9 +1029,14 @@ function renderWrite(root) {
       toast('발행 실패: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '📤 발행';
+      btn.innerHTML = '📤 즉시 발행';
     }
   });
+}
+
+function toDatetimeLocal(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function arrayBufferToBase64(buffer) {
@@ -1028,15 +1188,161 @@ function realKwCard(kw) {
     )
   );
 }
-function renderInbox(root) {
-  placeholder(root, '📋', '검수 대기함',
-    'Draft → Review → Scheduled 칸반 보드. 자동 생성된 초안이 여기로 쌓입니다.',
-    'M4 — Schedule & Pipeline');
+async function renderInbox(root) {
+  const COLS = [
+    { key: 'draft',     label: '초안 (Draft)' },
+    { key: 'review',    label: '검수 중 (Review)' },
+    { key: 'scheduled', label: '예약 (Scheduled)' },
+    { key: 'published', label: '발행됨 (Published)' },
+  ];
+  const board = el('div', { class: 'kanban' });
+  COLS.forEach(c => {
+    const head = el('div', { class: 'kanban-col-head' },
+      el('span', {}, c.label),
+      el('span', { class: 'kanban-col-count', id: 'cnt-' + c.key }, '...')
+    );
+    const list = el('div', { class: 'flex-col gap-2', id: 'col-' + c.key });
+    board.appendChild(el('div', { class: 'kanban-col' }, head, list));
+  });
+  root.appendChild(board);
+
+  try {
+    const [counts, posts] = await Promise.all([
+      fetch('/api/posts/counts').then(r => r.json()),
+      fetch('/api/posts?limit=200').then(r => r.json()),
+    ]);
+    COLS.forEach(c => {
+      document.getElementById('cnt-' + c.key).textContent = (counts[c.key] || 0) + '건';
+    });
+    const grouped = {};
+    COLS.forEach(c => grouped[c.key] = []);
+    posts.forEach(p => { if (grouped[p.status]) grouped[p.status].push(p); });
+    COLS.forEach(c => {
+      const col = document.getElementById('col-' + c.key);
+      const items = grouped[c.key];
+      if (!items.length) {
+        col.appendChild(el('div', { class: 'text-xs muted', style: { padding: '8px 4px' } }, '비어 있음'));
+        return;
+      }
+      items.forEach(p => col.appendChild(inboxCard(p)));
+    });
+  } catch (err) {
+    root.appendChild(el('div', { class: 'muted text-sm mt-3' }, '불러오기 실패: ' + err.message));
+  }
+
+  attachFab(root, '⊕', () => navigate('/write'), '새 글 작성');
 }
-function renderCalendar(root) {
-  placeholder(root, '📅', '발행 캘린더',
-    '예약 발행 일정을 월/주 단위로 보고, 빈 슬롯에 클릭으로 새 글을 채울 수 있습니다.',
-    'M4 — Schedule & Pipeline');
+
+function inboxCard(p) {
+  const when = p.scheduledAt || p.publishedAt || p.updatedAt;
+  const score = (p.seoScore != null)
+    ? el('span', { class: 'badge ' + (p.seoScore >= 80 ? 'badge-success' : p.seoScore >= 60 ? 'badge-warning' : 'badge-danger') }, 'SEO ' + p.seoScore)
+    : null;
+  const card = el('div', { class: 'kanban-card', onclick: () => openInboxPost(p.id) },
+    el('div', { class: 'kanban-card-title' }, p.title || '(제목 없음)'),
+    el('div', { class: 'kanban-card-meta' },
+      el('span', {}, fmtDateShort(when)),
+      score
+    ),
+    p.preview ? el('div', { class: 'kanban-card-preview' }, p.preview) : null
+  );
+  return card;
+}
+
+function openInboxPost(id) {
+  sessionStorage.setItem('loadPostId', id);
+  navigate('/write');
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function renderCalendar(root) {
+  const state = { cursor: new Date() };
+  state.cursor.setDate(1);
+
+  const toolbar = el('div', { class: 'cal-toolbar' });
+  const monthLabel = el('h2', { class: 'topbar-title' });
+  const prev = el('button', { class: 'btn btn-secondary btn-sm' }, '◀');
+  const next = el('button', { class: 'btn btn-secondary btn-sm' }, '▶');
+  const today = el('button', { class: 'btn btn-ghost btn-sm' }, '오늘');
+  toolbar.appendChild(el('div', { class: 'flex items-center gap-2' }, prev, monthLabel, next, today));
+  toolbar.appendChild(el('div', { class: 'text-xs muted' }, '🎯 골든타임: 오전 7–9시 · 저녁 9–11시'));
+  root.appendChild(toolbar);
+
+  const grid = el('div', { class: 'cal-grid' });
+  root.appendChild(grid);
+
+  async function render() {
+    const y = state.cursor.getFullYear();
+    const m = state.cursor.getMonth();
+    monthLabel.textContent = `${y}년 ${m + 1}월`;
+    const first = new Date(y, m, 1);
+    const startWeekday = first.getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const fromIso = new Date(y, m, 1 - startWeekday).toISOString();
+    const toIso = new Date(y, m, daysInMonth + (6 - new Date(y, m, daysInMonth).getDay()) + 1).toISOString();
+
+    let items = [];
+    try {
+      items = await fetch(`/api/calendar?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`).then(r => r.json());
+    } catch {}
+    const byDate = new Map();
+    items.forEach(it => {
+      const k = it.at ? it.at.slice(0, 10) : null;
+      if (!k) return;
+      if (!byDate.has(k)) byDate.set(k, []);
+      byDate.get(k).push(it);
+    });
+
+    grid.innerHTML = '';
+    ['일','월','화','수','목','금','토'].forEach(d => grid.appendChild(el('div', { class: 'cal-dow' }, d)));
+
+    const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    for (let i = 0; i < totalCells; i++) {
+      const dayNum = i - startWeekday + 1;
+      const cellDate = new Date(y, m, dayNum);
+      const k = cellDate.toISOString().slice(0, 10);
+      const otherMonth = dayNum < 1 || dayNum > daysInMonth;
+      const cell = el('div', {
+        class: 'cal-cell' + (otherMonth ? ' other-month' : '') + (k === todayKey ? ' today' : ''),
+        onclick: () => promptCreateOnDate(cellDate),
+      },
+        el('div', { class: 'cal-day' }, String(cellDate.getDate()))
+      );
+      const itemsForDay = byDate.get(k) || [];
+      itemsForDay.slice(0, 4).forEach(it => {
+        const time = new Date(it.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        cell.appendChild(el('div', {
+          class: 'cal-item ' + (it.status === 'published' ? 'published' : it.status === 'failed' ? 'failed' : ''),
+          onclick: (e) => { e.stopPropagation(); openInboxPost(it.id); },
+        }, `${time} ${it.title || '(제목 없음)'}`));
+      });
+      if (itemsForDay.length > 4) {
+        cell.appendChild(el('div', { class: 'text-xs muted' }, `+${itemsForDay.length - 4}건`));
+      }
+      grid.appendChild(cell);
+    }
+  }
+
+  prev.addEventListener('click', () => { state.cursor.setMonth(state.cursor.getMonth() - 1); render(); });
+  next.addEventListener('click', () => { state.cursor.setMonth(state.cursor.getMonth() + 1); render(); });
+  today.addEventListener('click', () => { state.cursor = new Date(); state.cursor.setDate(1); render(); });
+  render();
+}
+
+function promptCreateOnDate(date) {
+  const ymd = date.toLocaleDateString('ko-KR');
+  if (!confirm(`${ymd}에 새 글을 작성하시겠어요?`)) return;
+  const at = new Date(date);
+  at.setHours(7, 0, 0, 0); // suggest golden-hour
+  sessionStorage.setItem('seedScheduledAt', at.toISOString());
+  navigate('/write');
 }
 function renderPerformance(root) {
   placeholder(root, '📊', '성과 대시보드',

@@ -2,6 +2,8 @@
 
 const { db, uuid, now } = require('../db');
 const keywords = require('./keywords');
+const posts = require('./posts');
+const naver = require('./naver');
 
 const HANDLERS = {};
 
@@ -53,6 +55,28 @@ function start() {
     const list = Array.isArray(seeds) && seeds.length ? seeds : ['캠핑', '디지털', '육아', '카페', '주방'];
     const result = await keywords.refreshFromSeeds(list);
     console.log('[refresh_keywords]', result);
+  });
+
+  register('publish_post', async ({ postId }) => {
+    const post = posts.getForUser(null, postId);
+    if (!post) throw new Error(`post ${postId} not found`);
+    if (post.status === 'published') return; // idempotent
+    posts.updateForUser(null, postId, { status: 'publishing' });
+    try {
+      const tags = Array.isArray(post.tags) ? post.tags : [];
+      const naverPostId = await naver.publishPost(
+        post.title, post.contentHtml, tags, post.category || '', true
+      );
+      posts.updateForUser(null, postId, {
+        status: 'published',
+        publishedAt: now(),
+        naverPostId: String(naverPostId),
+      });
+      console.log(`[publish_post] published ${postId} → naver:${naverPostId}`);
+    } catch (err) {
+      posts.updateForUser(null, postId, { status: 'failed' });
+      throw err;
+    }
   });
 
   // Schedule the daily keyword refresh if not already queued for today
