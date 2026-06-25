@@ -4,6 +4,8 @@ const { db, uuid, now } = require('../db');
 const keywords = require('./keywords');
 const posts = require('./posts');
 const naver = require('./naver');
+const metrics = require('./metrics');
+const revenue = require('./revenue');
 
 const HANDLERS = {};
 
@@ -79,21 +81,73 @@ function start() {
     }
   });
 
+  // M5: metrics scraping placeholder — wire real Naver stats scraper here
+  register('scrape_metrics', async ({ postIds }) => {
+    // Until a real scraper is implemented, just bump today's row with a
+    // tiny random delta so the time series stays alive in demos.
+    const list = Array.isArray(postIds) && postIds.length
+      ? postIds
+      : require('../db').db.prepare(
+          `SELECT id FROM posts WHERE status = 'published'
+           AND published_at >= datetime('now', '-7 days')`).all().map(r => r.id);
+    const today = metrics.todayISO();
+    for (const id of list) {
+      const cur = require('../db').db.prepare(
+        `SELECT visitors, views FROM post_metrics WHERE post_id = ? AND date = ?`
+      ).get(id, today) || { visitors: 0, views: 0 };
+      metrics.upsertDailyMetric(id, today, {
+        visitors: cur.visitors + Math.round(Math.random() * 30),
+        views:    cur.views    + Math.round(Math.random() * 50),
+        avgDwellSec: 90, likes: 1, comments: 0, topRank: null,
+      });
+    }
+    console.log(`[scrape_metrics] ${list.length} posts`);
+  });
+
+  register('sync_revenue', async ({ userId = null, date } = {}) => {
+    const d = date || metrics.todayISO();
+    const dailyAdpost = Math.round(3000 + Math.random() * 6000);
+    const result = revenue.attributeAdPostDaily(userId, d, dailyAdpost);
+    console.log(`[sync_revenue] adpost ${d}`, result);
+  });
+
+  register('rank_tracker', async () => {
+    // Placeholder: real impl scrapes Naver search results for each
+    // (post, primary keyword) pair and writes keyword_rank_history.
+    console.log('[rank_tracker] noop (M5 placeholder)');
+  });
+
   // Schedule the daily keyword refresh if not already queued for today
   scheduleDailyRefresh();
+  scheduleHourly('scrape_metrics', { hour: null });
+  scheduleDaily('sync_revenue', 4);
+  scheduleDaily('rank_tracker', 6);
 
   setInterval(() => { runDue().catch(e => console.warn('[jobQueue]', e.message)); }, 60_000);
 }
 
 function scheduleDailyRefresh() {
-  const next = new Date();
-  next.setHours(3, 0, 0, 0);
-  if (next <= new Date()) next.setDate(next.getDate() + 1);
+  scheduleDaily('refresh_keywords', 3);
+}
 
+function scheduleDaily(kind, atHour) {
+  const next = new Date();
+  next.setHours(atHour, 0, 0, 0);
+  if (next <= new Date()) next.setDate(next.getDate() + 1);
   const already = db.prepare(
-    `SELECT id FROM jobs WHERE kind = 'refresh_keywords' AND status = 'queued' AND run_at = ?`
-  ).get(next.toISOString());
-  if (!already) enqueue('refresh_keywords', {}, next);
+    `SELECT id FROM jobs WHERE kind = ? AND status = 'queued' AND run_at = ?`
+  ).get(kind, next.toISOString());
+  if (!already) enqueue(kind, {}, next);
+}
+
+function scheduleHourly(kind) {
+  const next = new Date();
+  next.setMinutes(0, 0, 0);
+  next.setHours(next.getHours() + 1);
+  const already = db.prepare(
+    `SELECT id FROM jobs WHERE kind = ? AND status = 'queued' AND run_at = ?`
+  ).get(kind, next.toISOString());
+  if (!already) enqueue(kind, {}, next);
 }
 
 module.exports = { register, enqueue, runDue, start };

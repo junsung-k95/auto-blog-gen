@@ -18,7 +18,11 @@ const PORT = process.env.PORT || 3000;
 const dataDir = path.join(__dirname, '../data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 migrate();
-try { keywords.seedDemo(); } catch (e) { console.warn('[seed]', e.message); }
+try { keywords.seedDemo(); } catch (e) { console.warn('[seed:keywords]', e.message); }
+try {
+  const r = require('./services/perfSeed').run();
+  if (!r.skipped) console.log('[seed:performance]', r);
+} catch (e) { console.warn('[seed:performance]', e.message); }
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -37,6 +41,7 @@ app.use('/api', require('./routes/channels'));
 app.use('/api', require('./routes/coupang'));
 app.use('/api', require('./routes/seo'));
 app.use('/api', require('./routes/posts'));
+app.use('/api', require('./routes/performance'));
 app.use('/api', require('./routes/transcribe')(upload));
 app.use('/api', require('./routes/generate')(upload));
 app.use('/api', require('./routes/publish'));
