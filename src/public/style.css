@@ -803,6 +803,35 @@ body {
 .modal-title { font-size: var(--text-lg); font-weight: 700; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+/* ──────────────── Charts (lightweight CSS/SVG) ──────────────── */
+.sparkline { width: 100%; height: 64px; display: block; }
+.sparkline-fill { fill: var(--primary-500); fill-opacity: 0.12; }
+.sparkline-line { fill: none; stroke: var(--primary-500); stroke-width: 2; }
+
+.bar-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; }
+.bar-label { font-size: var(--text-sm); width: 96px; flex-shrink: 0; }
+.bar-track { flex: 1; height: 10px; background: var(--surface-alt); border-radius: var(--radius-full); overflow: hidden; }
+.bar-fill { height: 100%; background: var(--primary-500); border-radius: var(--radius-full); }
+.bar-fill.gold { background: var(--accent-gold); }
+.bar-fill.green { background: var(--success); }
+.bar-value { width: 96px; text-align: right; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+
+.donut-wrap { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.donut { --p: 50; --c: var(--primary-500); width: 140px; height: 140px; border-radius: 50%;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--surface-alt) 0);
+  display: grid; place-items: center; position: relative;
+}
+.donut::after {
+  content: ''; position: absolute; inset: 16px;
+  background: var(--surface); border-radius: 50%;
+}
+.donut-label { position: relative; z-index: 1; text-align: center; }
+.donut-label .v { font-size: var(--text-xl); font-weight: 700; }
+.donut-label .l { font-size: var(--text-xs); color: var(--text-muted); }
+
+.legend-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
 /* ──────────────── Utility ──────────────── */
 .muted { color: var(--text-muted); }
 .flex { display: flex; }

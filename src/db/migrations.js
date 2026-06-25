@@ -152,6 +152,66 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_affiliate_post ON affiliate_links(post_id);
     `,
   },
+  {
+    id: '003_performance',
+    sql: `
+      CREATE TABLE IF NOT EXISTS post_metrics (
+        post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,           -- YYYY-MM-DD
+        visitors INTEGER DEFAULT 0,
+        views INTEGER DEFAULT 0,
+        avg_dwell_sec INTEGER DEFAULT 0,
+        inbound_keywords TEXT,        -- JSON [{kw,count}]
+        likes INTEGER DEFAULT 0,
+        comments INTEGER DEFAULT 0,
+        top_rank INTEGER,
+        PRIMARY KEY (post_id, date)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_metrics_date ON post_metrics(date);
+
+      CREATE TABLE IF NOT EXISTS revenue_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        post_id TEXT REFERENCES posts(id) ON DELETE SET NULL,
+        affiliate_link_id TEXT REFERENCES affiliate_links(id) ON DELETE SET NULL,
+        channel TEXT NOT NULL,        -- 'adpost' | 'coupang' | 'sponsor'
+        date TEXT NOT NULL,           -- YYYY-MM-DD
+        clicks INTEGER DEFAULT 0,
+        conversions INTEGER DEFAULT 0,
+        amount_krw INTEGER DEFAULT 0,
+        raw_payload TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_revenue_user_date ON revenue_records(user_id, date);
+      CREATE INDEX IF NOT EXISTS idx_revenue_post ON revenue_records(post_id);
+      CREATE INDEX IF NOT EXISTS idx_revenue_channel_date ON revenue_records(channel, date);
+
+      CREATE TABLE IF NOT EXISTS keyword_rank_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+        keyword_id TEXT REFERENCES keywords(id) ON DELETE CASCADE,
+        captured_at TEXT NOT NULL,    -- YYYY-MM-DD
+        rank INTEGER,                 -- Naver search rank (1=top), NULL=not ranked
+        UNIQUE (post_id, keyword_id, captured_at)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rank_post ON keyword_rank_history(post_id, captured_at);
+
+      CREATE TABLE IF NOT EXISTS favorite_products (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        product_id TEXT NOT NULL,
+        name TEXT,
+        price INTEGER,
+        thumbnail_url TEXT,
+        product_url TEXT,
+        category TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE (user_id, product_id)
+      );
+    `,
+  },
 ];
 
 function migrate() {

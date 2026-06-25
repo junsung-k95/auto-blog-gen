@@ -127,35 +127,74 @@ function fmtInt(n) { return (n || 0).toLocaleString('ko-KR'); }
    VIEW: Dashboard (M1.3) — stub data, real wiring in M5
    ═════════════════════════════════════════════════════════════════ */
 async function renderDashboard(root) {
-  // Stub revenue data — replaced by GET /api/dashboard in M5
-  const monthRev = 423820;
+  // Real data from /api/dashboard (M5) — falls back gracefully if empty.
   const monthGoal = 1000000;
-  const pct = Math.round((monthRev / monthGoal) * 100);
 
-  const recentPosts = [
-    { title: '성수동 카페 추천 5선', visits: 1243, rev: 18200 },
-    { title: '갤럭시 워치 6 후기',  visits: 824,  rev: 12100 },
-    { title: '다이슨 V15 솔직 리뷰', visits: 612,  rev: 9800 },
-  ];
-
-  // ── Revenue hero
   const hero = el('div', { class: 'revenue-hero' },
-    el('div', { class: 'revenue-hero-label' }, '이번 달 수익'),
-    el('div', { class: 'revenue-hero-amount' }, fmtKrw(monthRev)),
-    el('div', { class: 'revenue-hero-delta' }, '▲ 18%  ·  목표 ' + fmtKrw(monthGoal) + ` (${pct}%)`),
+    el('div', { class: 'revenue-hero-label' }, '최근 30일 수익'),
+    el('div', { class: 'revenue-hero-amount' }, '...'),
+    el('div', { class: 'revenue-hero-delta' }, '목표 ' + fmtKrw(monthGoal)),
     el('div', { class: 'revenue-hero-progress' },
-      el('div', { class: 'revenue-hero-progress-bar', style: { width: pct + '%' } })
+      el('div', { class: 'revenue-hero-progress-bar', style: { width: '0%' } })
     ),
-    el('div', { class: 'revenue-hero-breakdown' }, '애드포스트 ₩162k  ·  쿠팡 ₩261k')
+    el('div', { class: 'revenue-hero-breakdown' }, '...')
   );
 
-  // ── KPI row
-  const kpis = el('div', { class: 'kpi-grid' },
-    kpiCard('✍️ 검수 대기', '3건', '오늘 발행 가능'),
-    kpiCard('📅 오늘 예약', '1건', '07:00 자동 발행'),
-    kpiCard('⚠️ 부진 글',   '2건', '리라이트 제안 있음'),
-    kpiCard('🎯 이번 주 목표', '3/5', '주 5회 발행')
-  );
+  const kpis = el('div', { class: 'kpi-grid' });
+  const postsSlot = el('div');
+
+  (async () => {
+    try {
+      const [dash, counts] = await Promise.all([
+        fetch('/api/dashboard?days=30').then(r => r.json()),
+        fetch('/api/posts/counts').then(r => r.json()),
+      ]);
+
+      const totalRev = dash.revenue?.total || 0;
+      const pct = Math.min(100, Math.round((totalRev / monthGoal) * 100));
+      const byCh = (dash.revenue?.byChannel || []).reduce((acc, c) => { acc[c.channel] = c.amount; return acc; }, {});
+      hero.querySelector('.revenue-hero-amount').textContent = fmtKrw(totalRev);
+      hero.querySelector('.revenue-hero-delta').textContent =
+        `목표 ${fmtKrw(monthGoal)} (${pct}%)  ·  방문 ${fmtInt(dash.visits?.visitors)}회`;
+      hero.querySelector('.revenue-hero-progress-bar').style.width = pct + '%';
+      hero.querySelector('.revenue-hero-breakdown').textContent =
+        `애드포스트 ${fmtKrw(byCh.adpost || 0)} · 쿠팡 ${fmtKrw(byCh.coupang || 0)}`;
+
+      kpis.innerHTML = '';
+      kpis.appendChild(kpiCard('✍️ 초안', counts.draft + '건', '검수 대기'));
+      kpis.appendChild(kpiCard('📅 예약', counts.scheduled + '건', '자동 발행 대기'));
+      kpis.appendChild(kpiCard('⚠️ 부진 글', dash.slumping.length + '건', '14일+ 노출 100 미만'));
+      kpis.appendChild(kpiCard('🎯 발행 완료', counts.published + '건', '누적'));
+
+      const rows = (dash.topPosts || []).map((p, i) =>
+        el('tr', { onclick: () => { sessionStorage.setItem('loadPostId', p.id); navigate('/write'); }, style: { cursor: 'pointer' } },
+          el('td', {}, String(i + 1)),
+          el('td', {}, p.title || '(제목 없음)'),
+          el('td', { class: 'num' }, fmtInt(p.visitors)),
+          el('td', { class: 'num' }, fmtKrw(p.revenueKrw))
+        )
+      );
+      const tbl = el('table', { class: 'list-table' },
+        el('thead', {}, el('tr', {},
+          el('th', {}, '#'), el('th', {}, '제목'),
+          el('th', { class: 'num' }, '방문'), el('th', { class: 'num' }, '수익')
+        )),
+        el('tbody', {}, ...rows)
+      );
+      postsSlot.innerHTML = '';
+      const section = el('section', { class: 'card' },
+        el('div', { class: 'flex items-center justify-between', style: { marginBottom: 'var(--space-3)' } },
+          el('h2', { class: 'card-title', style: { margin: 0 } }, '📈 최근 글 성과 (30일)'),
+          el('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigate('/performance') }, '전체 보기 →')
+        ),
+        rows.length ? tbl : el('div', { class: 'muted text-sm' }, '발행된 글이 없습니다.')
+      );
+      postsSlot.appendChild(section);
+    } catch (err) {
+      hero.querySelector('.revenue-hero-amount').textContent = fmtKrw(0);
+      postsSlot.appendChild(el('div', { class: 'muted text-sm' }, '대시보드 로딩 실패: ' + err.message));
+    }
+  })();
 
   // ── Golden keywords (real data, top 3 from /api/keywords/recommend)
   const kwGrid = el('div', { class: 'keyword-cards' });
@@ -180,45 +219,8 @@ async function renderDashboard(root) {
     }
   })();
 
-  // ── Recent posts
-  const postsTable = el('table', { class: 'list-table' },
-    el('thead', {},
-      el('tr', {},
-        el('th', {}, '#'),
-        el('th', {}, '제목'),
-        el('th', { class: 'num' }, '방문'),
-        el('th', { class: 'num' }, '수익')
-      )
-    ),
-    el('tbody', {},
-      ...recentPosts.map((p, i) =>
-        el('tr', {},
-          el('td', {}, String(i + 1)),
-          el('td', {}, p.title),
-          el('td', { class: 'num' }, fmtInt(p.visits)),
-          el('td', { class: 'num' }, fmtKrw(p.rev))
-        )
-      )
-    )
-  );
-
-  const postsSection = el('section', { class: 'card' },
-    el('div', { class: 'flex items-center justify-between', style: { marginBottom: 'var(--space-3)' } },
-      el('h2', { class: 'card-title', style: { margin: 0 } }, '📈 최근 글 성과 (7일)'),
-      el('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigate('/performance') }, '전체 보기 →')
-    ),
-    postsTable
-  );
-
-  // ── Hint
-  const hint = el('div', { class: 'card', style: { background: 'var(--surface-alt)', borderStyle: 'dashed' } },
-    el('div', { class: 'text-sm muted' },
-      '💡 표시되는 숫자는 **샘플**입니다. M2에서 키워드 실데이터, M5에서 실수익이 연결됩니다.'
-    )
-  );
-
   // ── Compose
-  const grid = el('div', { class: 'dashboard-grid' }, hero, kpis, kwSection, postsSection, hint);
+  const grid = el('div', { class: 'dashboard-grid' }, hero, kpis, kwSection, postsSlot);
   root.appendChild(grid);
 
   // FAB
@@ -1344,15 +1346,254 @@ function promptCreateOnDate(date) {
   sessionStorage.setItem('seedScheduledAt', at.toISOString());
   navigate('/write');
 }
-function renderPerformance(root) {
-  placeholder(root, '📊', '성과 대시보드',
-    '글별 방문자·노출·키워드 순위, 부진 글 알림, 시급 환산 ROI가 여기에 표시됩니다.',
-    'M5 — Performance & Revenue');
+async function renderPerformance(root) {
+  // Filter bar
+  const filter = el('div', { class: 'card flex items-center gap-3', style: { flexWrap: 'wrap' } });
+  const daysSelect = el('select', { class: 'select', style: { width: 'auto' } },
+    el('option', { value: '7' }, '최근 7일'),
+    el('option', { value: '30', selected: 'true' }, '최근 30일'),
+    el('option', { value: '90' }, '최근 90일')
+  );
+  filter.appendChild(el('span', { class: 'text-xs muted' }, '기간'));
+  filter.appendChild(daysSelect);
+  root.appendChild(filter);
+
+  const body = el('div', { class: 'dashboard-grid', style: { marginTop: 'var(--space-5)' } });
+  root.appendChild(body);
+
+  async function load() {
+    body.innerHTML = '<div class="muted text-sm">불러오는 중...</div>';
+    try {
+      const data = await fetch('/api/performance?days=' + daysSelect.value).then(r => r.json());
+
+      // KPI grid
+      const v = data.visits.totals;
+      const kpis = el('div', { class: 'kpi-grid' });
+      kpis.appendChild(kpiCard('👤 방문자', fmtInt(v.visitors), `최근 ${data.days}일`));
+      kpis.appendChild(kpiCard('👁 노출(조회)', fmtInt(v.views), '누적'));
+      kpis.appendChild(kpiCard('❤️ 공감', fmtInt(v.likes), ''));
+      kpis.appendChild(kpiCard('💬 댓글', fmtInt(v.comments), ''));
+
+      // Sparkline of daily visitors
+      const daily = data.visits.daily || [];
+      const spark = renderSparkline(daily.map(d => d.visitors));
+      const sparkCard = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '📈 일별 방문 추이'),
+        spark
+      );
+
+      // Top posts ranking
+      const revById = new Map((data.revenuePerPost || []).map(p => [p.id, p]));
+      const rows = data.topPosts.map((p, i) => {
+        const rev = revById.get(p.id);
+        return el('tr', { onclick: () => { sessionStorage.setItem('loadPostId', p.id); navigate('/write'); }, style: { cursor: 'pointer' } },
+          el('td', {}, String(i + 1)),
+          el('td', {}, p.title || '(제목 없음)'),
+          el('td', { class: 'num' }, fmtInt(p.visitors)),
+          el('td', { class: 'num' }, fmtInt(p.views)),
+          el('td', { class: 'num' }, p.bestRank ? '#' + p.bestRank : '—'),
+          el('td', { class: 'num' }, fmtKrw(rev?.amountKrw || 0))
+        );
+      });
+      const rankCard = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '🏆 글 성과 랭킹'),
+        rows.length
+          ? el('table', { class: 'list-table' },
+              el('thead', {}, el('tr', {},
+                el('th', {}, '#'), el('th', {}, '제목'),
+                el('th', { class: 'num' }, '방문'),
+                el('th', { class: 'num' }, '노출'),
+                el('th', { class: 'num' }, '최고 순위'),
+                el('th', { class: 'num' }, '수익')
+              )),
+              el('tbody', {}, ...rows))
+          : el('div', { class: 'muted text-sm' }, '데이터가 없습니다.')
+      );
+
+      // Slump alerts
+      const slump = data.slumping || [];
+      const slumpCard = el('section', { class: 'card', style: { borderColor: slump.length ? 'var(--warning)' : 'var(--border)' } },
+        el('h2', { class: 'card-title' }, '⚠️ 부진 글 알림 (발행 14일+ 노출 100 미만)'),
+        slump.length
+          ? el('div', { class: 'flex-col gap-2' },
+              ...slump.map(p => el('div', { class: 'flex items-center justify-between' },
+                el('span', { class: 'text-sm' }, p.title || '(제목 없음)'),
+                el('span', { class: 'badge badge-warning' }, `노출 ${fmtInt(p.visitors)}`)
+              ))
+            )
+          : el('div', { class: 'muted text-sm' }, '부진 글이 없습니다.')
+      );
+
+      body.innerHTML = '';
+      body.appendChild(kpis);
+      body.appendChild(sparkCard);
+      body.appendChild(rankCard);
+      body.appendChild(slumpCard);
+    } catch (err) {
+      body.innerHTML = '<div class="muted text-sm">불러오기 실패: ' + err.message + '</div>';
+    }
+  }
+  daysSelect.addEventListener('change', load);
+  load();
 }
-function renderRevenue(root) {
-  placeholder(root, '💰', '수익 관리',
-    '애드포스트 + 쿠팡파트너스 + 협찬 채널 통합 대시보드와 제휴 링크 성과.',
-    'M5 — Performance & Revenue');
+
+function renderSparkline(values) {
+  const W = 600, H = 64, PAD = 4;
+  if (!values || values.length === 0) {
+    return el('div', { class: 'muted text-sm' }, '데이터가 없습니다.');
+  }
+  const max = Math.max(...values, 1);
+  const step = (W - PAD * 2) / Math.max(values.length - 1, 1);
+  const pts = values.map((v, i) => [PAD + i * step, H - PAD - (v / max) * (H - PAD * 2)]);
+  const linePath = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${(W - PAD).toFixed(1)},${H - PAD} L${PAD},${H - PAD} Z`;
+  const svg = `<svg class="sparkline" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <path class="sparkline-fill" d="${areaPath}" />
+    <path class="sparkline-line" d="${linePath}" />
+  </svg>`;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = svg;
+  return wrap;
+}
+
+async function renderRevenue(root) {
+  // Filter bar
+  const filter = el('div', { class: 'card flex items-center gap-3', style: { flexWrap: 'wrap' } });
+  const daysSelect = el('select', { class: 'select', style: { width: 'auto' } },
+    el('option', { value: '7' }, '최근 7일'),
+    el('option', { value: '30', selected: 'true' }, '최근 30일'),
+    el('option', { value: '90' }, '최근 90일')
+  );
+  filter.appendChild(el('span', { class: 'text-xs muted' }, '기간'));
+  filter.appendChild(daysSelect);
+  root.appendChild(filter);
+
+  const body = el('div', { class: 'dashboard-grid', style: { marginTop: 'var(--space-5)' } });
+  root.appendChild(body);
+
+  async function load() {
+    body.innerHTML = '<div class="muted text-sm">불러오는 중...</div>';
+    try {
+      const data = await fetch('/api/revenue?days=' + daysSelect.value).then(r => r.json());
+      const total = data.summary?.total || 0;
+      const byChannel = data.summary?.byChannel || [];
+
+      // Total + donut
+      const channelTotals = byChannel.reduce((acc, c) => { acc[c.channel] = c.amount; return acc; }, {});
+      const adpost = channelTotals.adpost || 0;
+      const coupang = channelTotals.coupang || 0;
+      const sponsor = channelTotals.sponsor || 0;
+      const sumNonZero = adpost + coupang + sponsor || 1;
+      const pctAd = Math.round((adpost / sumNonZero) * 100);
+      const pctCp = Math.round((coupang / sumNonZero) * 100);
+      const pctSp = 100 - pctAd - pctCp;
+
+      const donut = el('div', { class: 'donut',
+        style: { '--p': String(pctAd + pctCp), '--c': 'var(--accent-gold)' } },
+        el('div', { class: 'donut-label' },
+          el('div', { class: 'v' }, fmtKrw(total)),
+          el('div', { class: 'l' }, `최근 ${data.days}일`)
+        )
+      );
+      const summary = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '💰 채널별 수익 분포'),
+        el('div', { class: 'donut-wrap' },
+          donut,
+          el('div', { class: 'flex-col gap-2' },
+            channelRow('애드포스트', adpost, pctAd, 'var(--primary-500)'),
+            channelRow('쿠팡 파트너스', coupang, pctCp, 'var(--accent-gold)'),
+            channelRow('협찬', sponsor, pctSp, 'var(--success)'),
+          )
+        )
+      );
+
+      // Affiliate link rankings
+      const linkRows = (data.affiliateLinks || []).map(l => el('tr', {},
+        el('td', {}, l.productName || '(상품 미상)'),
+        el('td', {}, channelChip(l.channel)),
+        el('td', { class: 'num' }, fmtInt(l.clicks)),
+        el('td', { class: 'num' }, fmtInt(l.conversions)),
+        el('td', { class: 'num' }, fmtKrw(l.amountKrw)),
+        el('td', { class: 'num' }, l.postsUsing + '개')
+      ));
+      const linksCard = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '🛒 베스트 제휴 상품'),
+        linkRows.length
+          ? el('table', { class: 'list-table' },
+              el('thead', {}, el('tr', {},
+                el('th', {}, '상품'), el('th', {}, '채널'),
+                el('th', { class: 'num' }, '클릭'),
+                el('th', { class: 'num' }, '전환'),
+                el('th', { class: 'num' }, '수익'),
+                el('th', { class: 'num' }, '글 수')
+              )),
+              el('tbody', {}, ...linkRows))
+          : el('div', { class: 'muted text-sm' }, '제휴 링크가 없습니다.')
+      );
+
+      // Per-post revenue
+      const postRows = (data.perPost || []).filter(p => p.amountKrw > 0).map((p, i) => el('tr', {
+        onclick: () => { sessionStorage.setItem('loadPostId', p.id); navigate('/write'); },
+        style: { cursor: 'pointer' },
+      },
+        el('td', {}, String(i + 1)),
+        el('td', {}, p.title || '(제목 없음)'),
+        el('td', { class: 'num' }, fmtInt(p.clicks)),
+        el('td', { class: 'num' }, fmtInt(p.conversions)),
+        el('td', { class: 'num' }, fmtKrw(p.amountKrw)),
+      ));
+      const postsCard = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '📑 글별 수익'),
+        postRows.length
+          ? el('table', { class: 'list-table' },
+              el('thead', {}, el('tr', {},
+                el('th', {}, '#'), el('th', {}, '제목'),
+                el('th', { class: 'num' }, '클릭'),
+                el('th', { class: 'num' }, '전환'),
+                el('th', { class: 'num' }, '수익')
+              )),
+              el('tbody', {}, ...postRows))
+          : el('div', { class: 'muted text-sm' }, '수익이 발생한 글이 없습니다.')
+      );
+
+      // Favorites library
+      const favs = data.favorites || [];
+      const favCard = el('section', { class: 'card' },
+        el('h2', { class: 'card-title' }, '⭐ 상품 라이브러리 (즐겨찾기)'),
+        favs.length
+          ? el('div', { class: 'flex gap-3', style: { flexWrap: 'wrap' } },
+              ...favs.map(f => el('div', { class: 'card', style: { padding: '12px', width: '160px' } },
+                el('div', { class: 'text-sm font-semibold' }, f.name),
+                el('div', { class: 'text-xs muted' }, fmtKrw(f.price || 0)),
+              )))
+          : el('div', { class: 'muted text-sm' }, '즐겨찾기한 상품이 없습니다. 작성 화면에서 쿠팡 상품 카드의 ⭐를 누르면 여기에 모입니다.')
+      );
+
+      body.innerHTML = '';
+      body.appendChild(summary);
+      body.appendChild(linksCard);
+      body.appendChild(postsCard);
+      body.appendChild(favCard);
+    } catch (err) {
+      body.innerHTML = '<div class="muted text-sm">불러오기 실패: ' + err.message + '</div>';
+    }
+  }
+  daysSelect.addEventListener('change', load);
+  load();
+}
+
+function channelRow(label, amount, pct, color) {
+  return el('div', { class: 'legend-row' },
+    el('span', { class: 'legend-dot', style: { background: color } }),
+    el('span', { style: { width: '120px' } }, label),
+    el('span', { class: 'text-sm font-semibold' }, fmtKrw(amount)),
+    el('span', { class: 'text-xs muted' }, `(${pct}%)`)
+  );
+}
+
+function channelChip(ch) {
+  const map = { coupang: '쿠팡', adpost: '애드포스트', sponsor: '협찬', ali: '알리' };
+  return el('span', { class: 'chip' }, map[ch] || ch);
 }
 function renderSponsors(root) {
   placeholder(root, '🤝', '협찬 보드',
