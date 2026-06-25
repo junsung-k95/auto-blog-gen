@@ -5,19 +5,9 @@
       "src": "src/index.js",
       "use": "@vercel/node",
       "config": { "includeFiles": ["src/public/**", "posts/**"] }
-    },
-    {
-      "src": "src/public/**",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
-    { "src": "/sw.js",          "dest": "/src/public/sw.js" },
-    { "src": "/manifest.json",  "dest": "/src/public/manifest.json" },
-    { "src": "/style.css",      "dest": "/src/public/style.css" },
-    { "src": "/app.js",         "dest": "/src/public/app.js" },
-    { "src": "/api/(.*)",       "dest": "/src/index.js" },
-    { "src": "/health",         "dest": "/src/index.js" },
-    { "src": "/(.*)",           "dest": "/src/public/index.html" }
+    { "src": "/(.*)", "dest": "src/index.js" }
   ]
 }
