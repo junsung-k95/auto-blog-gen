@@ -153,6 +153,41 @@ const MIGRATIONS = [
     `,
   },
   {
+    id: '004_sponsors',
+    sql: `
+      CREATE TABLE IF NOT EXISTS sponsors (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        company TEXT NOT NULL,
+        contact_email TEXT,
+        product_name TEXT,
+        budget_krw INTEGER,
+        status TEXT NOT NULL DEFAULT 'proposed',
+        notes TEXT,
+        received_at TEXT NOT NULL,
+        due_at TEXT,
+        post_id TEXT REFERENCES posts(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sponsors_user ON sponsors(user_id, status);
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT,
+        link TEXT,
+        read_at TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, read_at);
+    `,
+  },
+  {
     id: '003_performance',
     sql: `
       CREATE TABLE IF NOT EXISTS post_metrics (

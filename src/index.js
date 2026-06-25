@@ -23,6 +23,14 @@ try {
   const r = require('./services/perfSeed').run();
   if (!r.skipped) console.log('[seed:performance]', r);
 } catch (e) { console.warn('[seed:performance]', e.message); }
+try {
+  const r = require('./services/sponsors').seedDemo();
+  if (!r.skipped) console.log('[seed:sponsors]', r);
+} catch (e) { console.warn('[seed:sponsors]', e.message); }
+try {
+  const r = require('./services/notifications').seedDemo();
+  if (!r.skipped) console.log('[seed:notifications]', r);
+} catch (e) { console.warn('[seed:notifications]', e.message); }
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -47,6 +55,8 @@ app.use('/api', require('./routes/generate')(upload));
 app.use('/api', require('./routes/publish'));
 app.use('/api', require('./routes/trends'));
 app.use('/api', require('./routes/history'));
+app.use('/api', require('./routes/sponsors'));
+app.use('/api', require('./routes/notifications'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

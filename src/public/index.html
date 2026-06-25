@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#6366F1" />
   <title>auto-blog-gen — 블로그 자동화 수익 스튜디오</title>
+  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -34,7 +35,7 @@
       </nav>
 
       <div class="sidebar-footer">
-        <span class="text-xs muted">v0.1.0 · M1</span>
+        <span class="text-xs muted">v0.6.0 · M6</span>
         <button class="theme-toggle" id="themeToggle" title="테마 전환">🌙</button>
       </div>
     </aside>
@@ -50,7 +51,9 @@
             <option value="openai">GPT-4o</option>
             <option value="claude">Claude</option>
           </select>
-          <button class="btn-icon" aria-label="알림" id="notifBtn">🔔</button>
+          <button class="btn-icon notif-bell" aria-label="알림" id="notifBtn">
+          🔔<span class="notif-badge" id="notifBadge" hidden></span>
+        </button>
         </div>
       </header>
 
@@ -64,6 +67,38 @@
     <a class="mobile-tab" data-route="/calendar"><span class="mobile-tab-icon">📅</span><span>캘린더</span></a>
     <a class="mobile-tab" data-route="/revenue"><span class="mobile-tab-icon">💰</span><span>수익</span></a>
   </nav>
+
+  <!-- Notification panel -->
+  <div class="notif-panel" id="notifPanel" hidden>
+    <div class="notif-panel-header">
+      <span class="font-semibold">알림</span>
+      <button class="btn-link text-xs" id="notifReadAll">모두 읽음</button>
+    </div>
+    <div class="notif-list" id="notifList"></div>
+  </div>
+
+  <!-- Onboarding overlay -->
+  <div class="onboard-overlay" id="onboardOverlay" hidden>
+    <div class="onboard-modal">
+      <div class="onboard-steps" id="onboardSteps"></div>
+      <div class="onboard-footer">
+        <div class="onboard-dots" id="onboardDots"></div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm" id="onboardSkip">건너뛰기</button>
+          <button class="btn btn-primary btn-sm" id="onboardNext">다음</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA install prompt -->
+  <div class="pwa-banner" id="pwaBanner" hidden>
+    <span>📱 홈 화면에 추가하면 앱처럼 사용할 수 있어요!</span>
+    <div class="flex gap-2">
+      <button class="btn btn-primary btn-sm" id="pwaInstall">설치</button>
+      <button class="btn btn-ghost btn-sm" id="pwaDismiss">닫기</button>
+    </div>
+  </div>
 
   <div class="toast-container" id="toastContainer"></div>
 
