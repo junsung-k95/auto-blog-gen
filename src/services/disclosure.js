@@ -22,6 +22,9 @@ const NOTICES = {
   coupang_affiliate: `<p style="padding:10px 14px;background:#fef3c7;border-left:3px solid #f59e0b;color:#78350f;font-size:14px;border-radius:6px;margin:12px 0;">
 🛒 <strong>쿠팡 파트너스 활동 안내</strong> · 본 포스팅은 쿠팡파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
 </p>`,
+  naver_shopping_connect: `<p style="text-align:center;padding:10px 14px;background:#f0f9ff;border-left:3px solid #0ea5e9;color:#0c4a6e;font-size:14px;border-radius:6px;margin:12px 0;">
+"이 포스팅은 네이버 쇼핑 커넥트 활동의 일환으로, 판매 발생 시 수수료를 제공받습니다."
+</p>`,
 };
 
 /** Returns the HTML notice block (or empty string). */
@@ -37,6 +40,7 @@ function disclosureHtml(kind) {
  */
 function resolveDisclosure(disclosureKind, hasCoupangLinks) {
   if (disclosureKind === 'sponsored') return 'sponsored';
+  if (disclosureKind === 'naver_shopping_connect') return 'naver_shopping_connect';
   if (hasCoupangLinks) return 'coupang_affiliate';
   if (disclosureKind === 'self_purchase') return 'self_purchase';
   return 'none';
@@ -49,6 +53,7 @@ function isMissingDisclosure(kind, contentHtml) {
     self_purchase: '내돈내산',
     sponsored: '유료 광고',
     coupang_affiliate: '쿠팡파트너스',
+    naver_shopping_connect: '쇼핑 커넥트',
   };
   const needle = probes[kind];
   return needle ? !String(contentHtml || '').includes(needle) : false;

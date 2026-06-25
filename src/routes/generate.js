@@ -13,7 +13,7 @@ const LENGTH_PRESETS = {
   catalog: { label: '카탈로그형', targetChars: 2000, instruction: '제품·장소 비교 카탈로그형 2000자 내외, 항목별 H3 소제목과 장단점 정리.' },
 };
 
-function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang }) {
+function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang, shoppingConnectUrl }) {
   const parts = [];
   if (seedKeyword) parts.push(`주 타겟 키워드: "${seedKeyword}" — 제목과 본문 첫 문단·H2 헤더에 자연스럽게 1~3% 밀도로 포함.`);
   if (Array.isArray(secondaryKeywords) && secondaryKeywords.length) {
@@ -21,6 +21,12 @@ function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disc
   }
   const preset = LENGTH_PRESETS[lengthPreset];
   if (preset) parts.push(`글 길이/포맷: ${preset.instruction}`);
+
+  if (shoppingConnectUrl) {
+    parts.push('이 포스팅은 직접 구매해서 사용해본 내돈내산 리뷰입니다. 제목에 "[내돈내산]"을 포함하세요.');
+    parts.push(`본문 앞부분(도입 단락 바로 아래)에 다음 구매 링크 HTML을 그대로 삽입하세요:\n<p style="text-align:center;margin:16px 0;">⬇️⬇️ 공홈 구매 링크 ⬇️⬇️<br><a href="${shoppingConnectUrl}" target="_blank" rel="nofollow sponsored">${shoppingConnectUrl}</a></p>`);
+    parts.push('본문 상단(제목 바로 아래)에 다음 공시 문구를 그대로 삽입하세요: "이 포스팅은 네이버 쇼핑 커넥트 활동의 일환으로, 판매 발생 시 수수료를 제공받습니다."');
+  }
 
   const effective = resolveDisclosure(disclosureKind, hasCoupang);
   if (effective === 'coupang_affiliate') {
@@ -57,6 +63,7 @@ module.exports = function (upload) {
       const lengthPreset = req.body.lengthPreset || 'review';
       const disclosureKind = req.body.disclosureKind || 'none';
       const hasCoupang = req.body.hasCoupang === 'true' || req.body.hasCoupang === true;
+      const shoppingConnectUrl = req.body.shoppingConnectUrl || '';
       const imageBuffers = (req.files || []).map(f => f.buffer);
 
       const examples = await loadStyleExamples(5);
@@ -64,7 +71,7 @@ module.exports = function (upload) {
 
       // Compose enriched memo so the existing service signatures don't change
       const contextBlock = buildContextPrompt({
-        seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang,
+        seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang, shoppingConnectUrl,
       });
       const enrichedMemo = [memo, '─── 작성 가이드 ───', '- ' + contextBlock]
         .filter(Boolean).join('\n\n');
@@ -89,6 +96,7 @@ module.exports = function (upload) {
           self_purchase: '내돈내산',
           sponsored: '유료 광고',
           coupang_affiliate: '쿠팡파트너스',
+          naver_shopping_connect: '쇼핑 커넥트',
         }[effective];
         if (probe && !result.content.includes(probe)) {
           const block = disclosureHtml(effective);

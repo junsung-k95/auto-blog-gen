@@ -359,16 +359,40 @@ function renderWrite(root) {
     lengthSelect
   ));
 
+  // Shopping Connect URL
+  const shoppingConnectInput = el('input', {
+    class: 'input',
+    type: 'url',
+    placeholder: '쇼핑 커넥트 발급 링크 붙여넣기 (naver.me/...)',
+  });
+  left.appendChild(el('div', { class: 'field' },
+    el('div', { class: 'field-label' }, '🛍️ 쇼핑 커넥트 링크 (내돈내산 리뷰용)'),
+    el('div', { class: 'text-xs muted', style: { marginBottom: '6px' } },
+      '발급 링크 관리 페이지에서 복사한 URL을 붙여넣으면 포스팅에 자동 삽입됩니다.'
+    ),
+    shoppingConnectInput
+  ));
+
   // Disclosure
   const disclosureSelect = el('select', { class: 'select' },
-    el('option', { value: 'none' },         '공시 표기 없음'),
-    el('option', { value: 'self_purchase' },'내돈내산'),
-    el('option', { value: 'sponsored' },    '협찬')
+    el('option', { value: 'none' },                   '공시 표기 없음'),
+    el('option', { value: 'self_purchase' },           '내돈내산'),
+    el('option', { value: 'naver_shopping_connect' }, '쇼핑 커넥트 (수수료 공시)'),
+    el('option', { value: 'sponsored' },              '협찬')
   );
   left.appendChild(el('div', { class: 'field' },
     el('div', { class: 'field-label' }, '🏷️ 공시'),
     disclosureSelect
   ));
+
+  // Auto-select disclosure when shopping connect URL is entered
+  shoppingConnectInput.addEventListener('input', () => {
+    if (shoppingConnectInput.value.trim()) {
+      disclosureSelect.value = 'naver_shopping_connect';
+    } else if (disclosureSelect.value === 'naver_shopping_connect') {
+      disclosureSelect.value = 'none';
+    }
+  });
 
   // Generate
   const generateBtn = el('button', { class: 'btn btn-primary btn-lg' }, '✨ 포스팅 생성');
@@ -567,6 +591,8 @@ function renderWrite(root) {
     formData.append('lengthPreset', lengthSelect.value);
     formData.append('disclosureKind', disclosureSelect.value);
     formData.append('hasCoupang', String(hasCoupangLinks()));
+    const scUrl = shoppingConnectInput.value.trim();
+    if (scUrl) formData.append('shoppingConnectUrl', scUrl);
     uploadedImages.forEach(img =>
       formData.append('images', new Blob([img.buffer], { type: img.mimeType }), img.file.name)
     );
