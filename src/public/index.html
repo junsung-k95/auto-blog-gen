@@ -2,122 +2,70 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>auto-blog-gen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#6366F1" />
+  <title>auto-blog-gen — 블로그 자동화 수익 스튜디오</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="app-shell">
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-mark">A</div>
+        <span>auto-blog-gen</span>
+      </div>
 
-  <!-- History panel (slide-in from right) -->
-  <div id="historyPanel" class="history-panel">
-    <div class="history-panel-header">
-      <h3>📋 발행 히스토리</h3>
-      <button id="historyCloseBtn" class="btn-icon">✕</button>
-    </div>
-    <div id="historyList" class="history-list">
-      <p class="empty-msg">발행된 포스팅이 없습니다.</p>
-    </div>
-  </div>
-  <div id="historyOverlay" class="history-overlay"></div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <span class="nav-section-label">메인</span>
+        <a class="nav-item" data-route="/dashboard"><span class="nav-icon">🏠</span><span>대시보드</span></a>
+        <a class="nav-item" data-route="/discovery"><span class="nav-icon">🔍</span><span>키워드 발굴</span></a>
+        <a class="nav-item" data-route="/write"><span class="nav-icon">✍️</span><span>작성</span></a>
+        <a class="nav-item" data-route="/inbox"><span class="nav-icon">📋</span><span>검수 대기함</span></a>
+        <a class="nav-item" data-route="/calendar"><span class="nav-icon">📅</span><span>발행 캘린더</span></a>
 
-  <div class="app">
-    <header class="app-header">
-      <h1>✍️ auto-blog-gen</h1>
-      <div class="header-controls">
-        <div class="provider-selector">
-          <label for="aiProvider">AI 모델</label>
-          <select id="aiProvider">
-            <option value="openai">OpenAI GPT-4o</option>
-            <option value="claude">Claude claude-opus-4-6</option>
+        <span class="nav-section-label">분석·수익</span>
+        <a class="nav-item" data-route="/performance"><span class="nav-icon">📊</span><span>성과</span></a>
+        <a class="nav-item" data-route="/revenue"><span class="nav-icon">💰</span><span>수익 관리</span></a>
+        <a class="nav-item" data-route="/sponsors"><span class="nav-icon">🤝</span><span>협찬 보드</span></a>
+
+        <span class="nav-section-label">시스템</span>
+        <a class="nav-item" data-route="/settings"><span class="nav-icon">⚙️</span><span>설정</span></a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="text-xs muted">v0.1.0 · M1</span>
+        <button class="theme-toggle" id="themeToggle" title="테마 전환">🌙</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="flex items-center gap-3">
+          <button class="btn-icon menu-toggle" id="menuToggle" aria-label="메뉴 열기">☰</button>
+          <h1 class="topbar-title" id="topbarTitle">대시보드</h1>
+        </div>
+        <div class="topbar-actions">
+          <select id="aiProvider" class="select" style="width:auto;padding:6px 12px;font-size:12px;">
+            <option value="openai">GPT-4o</option>
+            <option value="claude">Claude</option>
           </select>
+          <button class="btn-icon" aria-label="알림" id="notifBtn">🔔</button>
         </div>
-        <button id="historyBtn" class="btn btn-ghost">📋 히스토리</button>
-      </div>
-    </header>
+      </header>
 
-    <!-- Draft restore banner -->
-    <div id="draftBanner" class="draft-banner" style="display:none">
-      💾 저장된 초안이 있습니다.
-      <button id="draftRestoreBtn" class="btn-link">불러오기</button>
-      <button id="draftDismissBtn" class="btn-link muted">무시</button>
-    </div>
-
-    <main class="app-main">
-      <!-- Voice Input -->
-      <section class="card" id="voiceSection">
-        <h2>🎤 음성 입력</h2>
-        <div class="voice-controls">
-          <button id="recordBtn" class="btn btn-record">● 녹음 시작</button>
-          <button id="stopBtn" class="btn btn-stop" disabled>■ 정지</button>
-          <span id="recordStatus" class="status-text"></span>
-        </div>
-        <div id="transcriptBox" class="transcript-box" contenteditable="true"
-          placeholder="음성 녹음 후 텍스트가 여기에 표시됩니다. 직접 수정도 가능합니다."></div>
-      </section>
-
-      <!-- Image Upload -->
-      <section class="card" id="imageSection">
-        <h2>🖼️ 사진 첨부</h2>
-        <div id="dropZone" class="drop-zone">
-          <span>사진을 여기에 드래그하거나 클릭하여 업로드</span>
-          <input type="file" id="imageInput" accept="image/*" multiple hidden />
-        </div>
-        <p id="dragHint" class="drag-hint" style="display:none">↕ 드래그로 순서 변경 가능</p>
-        <div id="imagePreviews" class="image-previews"></div>
-      </section>
-
-      <!-- Memo -->
-      <section class="card" id="memoSection">
-        <h2>📝 추가 메모</h2>
-        <textarea id="memoInput" class="memo-input"
-          placeholder="짧은 메모나 추가 정보를 입력하세요 (선택사항)"></textarea>
-      </section>
-
-      <!-- Generate Button -->
-      <div class="action-bar">
-        <button id="generateBtn" class="btn btn-primary btn-large">✨ 포스팅 생성</button>
-        <p id="autoSaveStatus" class="autosave-status"></p>
-      </div>
-
-      <!-- Preview -->
-      <section class="card" id="previewSection" style="display:none">
-        <div class="preview-header">
-          <h2>미리보기</h2>
-          <div class="preview-header-actions">
-            <button id="editToggleBtn" class="btn btn-ghost btn-sm">✏️ 편집</button>
-            <button id="trendBtn" class="btn btn-trend btn-sm">📊 트렌드 분석</button>
-          </div>
-        </div>
-
-        <div id="usageInfo" class="usage-info" style="display:none"></div>
-
-        <!-- Trend result panel -->
-        <div id="trendPanel" class="trend-panel" style="display:none">
-          <div class="trend-panel-header">
-            <span class="trend-panel-title">📊 트렌드 분석 결과</span>
-            <button id="trendCloseBtn" class="btn-icon">✕</button>
-          </div>
-          <div id="trendContent" class="trend-content"></div>
-        </div>
-
-        <div id="titleInput" class="preview-title" contenteditable="true"
-          placeholder="포스팅 제목을 입력하세요"></div>
-
-        <div id="previewContent" class="preview-content"></div>
-
-        <div class="publish-bar">
-          <div class="publish-options">
-            <input type="text" id="tagsInput" placeholder="태그 (쉼표로 구분)" class="tags-input" />
-            <label class="draft-toggle">
-              <input type="checkbox" id="draftMode" /> 임시저장으로 올리기
-            </label>
-          </div>
-          <button id="publishBtn" class="btn btn-publish">📤 네이버 블로그 업로드</button>
-        </div>
-        <div id="publishResult" class="publish-result" style="display:none"></div>
-      </section>
+      <div class="content" id="viewRoot"></div>
     </main>
   </div>
+
+  <nav class="mobile-tabs" id="mobileTabs">
+    <a class="mobile-tab" data-route="/dashboard"><span class="mobile-tab-icon">🏠</span><span>홈</span></a>
+    <a class="mobile-tab" data-route="/write"><span class="mobile-tab-icon">✍️</span><span>작성</span></a>
+    <a class="mobile-tab" data-route="/calendar"><span class="mobile-tab-icon">📅</span><span>캘린더</span></a>
+    <a class="mobile-tab" data-route="/revenue"><span class="mobile-tab-icon">💰</span><span>수익</span></a>
+  </nav>
+
+  <div class="toast-container" id="toastContainer"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.3/Sortable.min.js"></script>
   <script src="app.js"></script>
