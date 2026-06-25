@@ -7,13 +7,38 @@ const claudeService = require('../services/claude');
 const { loadStyleExamples, buildStylePrompt } = require('../services/pastPosts');
 const { disclosureHtml, resolveDisclosure } = require('../services/disclosure');
 
+async function fetchProductText(url) {
+  if (!url) return '';
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9',
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    const html = await res.text();
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[a-z]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3000);
+    return text;
+  } catch {
+    return '';
+  }
+}
+
 const LENGTH_PRESETS = {
   info:    { label: '정보형',     targetChars: 1500, instruction: '정보 전달이 중심인 1500자 내외로 작성. 소제목 3개 이상, 각 섹션 200~400자.' },
   review:  { label: '후기형',     targetChars: 800,  instruction: '후기·일상 톤으로 800자 내외, 친근체. 사진을 중심에 두고 짧은 단락으로 구성.' },
   catalog: { label: '카탈로그형', targetChars: 2000, instruction: '제품·장소 비교 카탈로그형 2000자 내외, 항목별 H3 소제목과 장단점 정리.' },
 };
 
-function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang }) {
+function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang, shoppingConnectUrl }) {
   const parts = [];
   if (seedKeyword) parts.push(`주 타겟 키워드: "${seedKeyword}" — 제목과 본문 첫 문단·H2 헤더에 자연스럽게 1~3% 밀도로 포함.`);
   if (Array.isArray(secondaryKeywords) && secondaryKeywords.length) {
@@ -21,6 +46,12 @@ function buildContextPrompt({ seedKeyword, secondaryKeywords, lengthPreset, disc
   }
   const preset = LENGTH_PRESETS[lengthPreset];
   if (preset) parts.push(`글 길이/포맷: ${preset.instruction}`);
+
+  if (shoppingConnectUrl) {
+    parts.push('이 포스팅은 직접 구매해서 사용해본 내돈내산 리뷰입니다. 제목에 "[내돈내산]"을 포함하세요.');
+    parts.push(`본문 앞부분(도입 단락 바로 아래)에 다음 구매 링크 HTML을 그대로 삽입하세요:\n<p style="text-align:center;margin:16px 0;">⬇️⬇️ 공홈 구매 링크 ⬇️⬇️<br><a href="${shoppingConnectUrl}" target="_blank" rel="nofollow sponsored">${shoppingConnectUrl}</a></p>`);
+    parts.push('본문 상단(제목 바로 아래)에 다음 공시 문구를 그대로 삽입하세요: "이 포스팅은 네이버 쇼핑 커넥트 활동의 일환으로, 판매 발생 시 수수료를 제공받습니다."');
+  }
 
   const effective = resolveDisclosure(disclosureKind, hasCoupang);
   if (effective === 'coupang_affiliate') {
@@ -57,16 +88,24 @@ module.exports = function (upload) {
       const lengthPreset = req.body.lengthPreset || 'review';
       const disclosureKind = req.body.disclosureKind || 'none';
       const hasCoupang = req.body.hasCoupang === 'true' || req.body.hasCoupang === true;
+      const shoppingConnectUrl = req.body.shoppingConnectUrl || '';
+      const productPageUrl = req.body.productPageUrl || '';
       const imageBuffers = (req.files || []).map(f => f.buffer);
 
-      const examples = await loadStyleExamples(5);
+      const [examples, productText] = await Promise.all([
+        loadStyleExamples(5),
+        fetchProductText(productPageUrl),
+      ]);
       const stylePrompt = buildStylePrompt(examples);
 
       // Compose enriched memo so the existing service signatures don't change
       const contextBlock = buildContextPrompt({
-        seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang,
+        seedKeyword, secondaryKeywords, lengthPreset, disclosureKind, hasCoupang, shoppingConnectUrl,
       });
-      const enrichedMemo = [memo, '─── 작성 가이드 ───', '- ' + contextBlock]
+      const productBlock = productText
+        ? `─── 상품 페이지 정보 (자동 추출) ───\n${productText}`
+        : '';
+      const enrichedMemo = [memo, productBlock, '─── 작성 가이드 ───', '- ' + contextBlock]
         .filter(Boolean).join('\n\n');
 
       let result;
@@ -75,9 +114,14 @@ module.exports = function (upload) {
           transcript, imageBuffers, stylePrompt, enrichedMemo,
           (chunk) => sendEvent({ chunk })
         );
+      } else if (provider === 'codex') {
+        result = await openaiService.generateBlogPost(
+          transcript, imageBuffers, stylePrompt, enrichedMemo, 'codex-mini-latest'
+        );
+        sendEvent({ chunk: result.content });
       } else {
         result = await openaiService.generateBlogPost(
-          transcript, imageBuffers, stylePrompt, enrichedMemo
+          transcript, imageBuffers, stylePrompt, enrichedMemo, 'gpt-4o'
         );
         sendEvent({ chunk: result.content });
       }
@@ -89,6 +133,7 @@ module.exports = function (upload) {
           self_purchase: '내돈내산',
           sponsored: '유료 광고',
           coupang_affiliate: '쿠팡파트너스',
+          naver_shopping_connect: '쇼핑 커넥트',
         }[effective];
         if (probe && !result.content.includes(probe)) {
           const block = disclosureHtml(effective);

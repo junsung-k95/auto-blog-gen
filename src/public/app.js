@@ -359,16 +359,57 @@ function renderWrite(root) {
     lengthSelect
   ));
 
+  // ── 상품 링크 섹션 (두 칸)
+  const productInfoBox = el('div', { class: 'card', style: { padding: 'var(--space-4)', marginBottom: 'var(--space-3)', background: 'var(--surface-alt)', border: '1px solid var(--border)', borderRadius: '10px' } });
+  productInfoBox.appendChild(el('div', { class: 'font-semibold text-sm', style: { marginBottom: 'var(--space-3)' } }, '🛍️ 상품 링크'));
+
+  // 1) 상품 정보 링크
+  const productPageInput = el('input', {
+    class: 'input',
+    type: 'url',
+    placeholder: '상품 페이지 URL (smartstore.naver.com/...)',
+  });
+  const productFetchStatus = el('span', { class: 'text-xs muted' });
+  productInfoBox.appendChild(el('div', { class: 'field', style: { marginBottom: 'var(--space-3)' } },
+    el('div', { class: 'field-label' }, '① 상품정보 링크'),
+    el('div', { class: 'text-xs muted', style: { marginBottom: '4px' } }, 'AI가 이 페이지에서 상품 정보를 읽어 리뷰에 활용합니다'),
+    el('div', { class: 'flex gap-2 items-center' }, productPageInput, productFetchStatus)
+  ));
+
+  // 2) 수익용 링크 (쇼핑 커넥트)
+  const shoppingConnectInput = el('input', {
+    class: 'input',
+    type: 'url',
+    placeholder: '수익용 링크 (naver.me/...)',
+  });
+  productInfoBox.appendChild(el('div', { class: 'field' },
+    el('div', { class: 'field-label' }, '② 수익용 링크 (쇼핑 커넥트)'),
+    el('div', { class: 'text-xs muted', style: { marginBottom: '4px' } }, '발급 링크 관리에서 복사 → 포스팅 본문에 자동 삽입'),
+    shoppingConnectInput
+  ));
+
+  left.appendChild(productInfoBox);
+
   // Disclosure
   const disclosureSelect = el('select', { class: 'select' },
-    el('option', { value: 'none' },         '공시 표기 없음'),
-    el('option', { value: 'self_purchase' },'내돈내산'),
-    el('option', { value: 'sponsored' },    '협찬')
+    el('option', { value: 'none' },                   '공시 표기 없음'),
+    el('option', { value: 'self_purchase' },           '내돈내산'),
+    el('option', { value: 'naver_shopping_connect' }, '쇼핑 커넥트 (수수료 공시)'),
+    el('option', { value: 'sponsored' },              '협찬')
   );
   left.appendChild(el('div', { class: 'field' },
     el('div', { class: 'field-label' }, '🏷️ 공시'),
     disclosureSelect
   ));
+
+  // Auto-select disclosure when shopping connect URL is entered
+  shoppingConnectInput.addEventListener('input', () => {
+    if (shoppingConnectInput.value.trim()) {
+      disclosureSelect.value = 'naver_shopping_connect';
+    } else if (disclosureSelect.value === 'naver_shopping_connect') {
+      disclosureSelect.value = 'none';
+    }
+  });
 
   // Generate
   const generateBtn = el('button', { class: 'btn btn-primary btn-lg' }, '✨ 포스팅 생성');
@@ -567,6 +608,10 @@ function renderWrite(root) {
     formData.append('lengthPreset', lengthSelect.value);
     formData.append('disclosureKind', disclosureSelect.value);
     formData.append('hasCoupang', String(hasCoupangLinks()));
+    const scUrl = shoppingConnectInput.value.trim();
+    if (scUrl) formData.append('shoppingConnectUrl', scUrl);
+    const ppUrl = productPageInput.value.trim();
+    if (ppUrl) formData.append('productPageUrl', ppUrl);
     uploadedImages.forEach(img =>
       formData.append('images', new Blob([img.buffer], { type: img.mimeType }), img.file.name)
     );
@@ -774,7 +819,7 @@ function renderWrite(root) {
 
   function showUsage(usage, provider) {
     if (!usage) return;
-    const model = provider === 'claude' ? 'Claude' : 'GPT-4o';
+    const model = provider === 'claude' ? 'Claude' : provider === 'codex' ? 'Codex (codex-mini-latest)' : 'GPT-4o';
     usageBlock.innerHTML = `
       <div class="insight-block-title">💸 사용량 / 비용</div>
       <div class="text-sm">${model}</div>
