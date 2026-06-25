@@ -103,6 +103,10 @@ body {
   min-height: 100vh;
 }
 
+/* The mobile slide-in overlay must not occupy a grid cell on desktop —
+   it is only shown inside the max-width:768px media query below. */
+.sidebar-overlay { display: none; }
+
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -615,6 +619,7 @@ body {
   }
   .sidebar.open { left: 0; }
   .sidebar-overlay {
+    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.4);
