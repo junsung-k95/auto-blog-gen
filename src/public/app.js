@@ -1,10 +1,7 @@
 'use strict';
 
 /* ─────────────────────────────────────────────────────────────────
-   auto-blog-gen — Frontend Shell (M1)
-   - Hash router (/dashboard, /write, /settings, ...)
-   - Theme toggle (light/dark, persisted)
-   - View modules wired with existing API (transcribe, generate, publish, history, trends)
+   auto-blog-gen — Frontend Shell (M6)
    ───────────────────────────────────────────────────────────────── */
 
 /* ──────────────── Toast ──────────────── */
@@ -1595,10 +1592,148 @@ function channelChip(ch) {
   const map = { coupang: '쿠팡', adpost: '애드포스트', sponsor: '협찬', ali: '알리' };
   return el('span', { class: 'chip' }, map[ch] || ch);
 }
-function renderSponsors(root) {
-  placeholder(root, '🤝', '협찬 보드',
-    '제안받음 → 수락 → 작성중 → 발행 → 정산 칸반. 협찬 파이프라인 관리.',
-    'M6 — Sponsor & Polish');
+/* ═════════════════════════════════════════════════════════════════
+   VIEW: Sponsors — 협찬 칸반 (M6)
+   ═════════════════════════════════════════════════════════════════ */
+const SPONSOR_COLS = [
+  { id: 'proposed',  label: '📩 제안받음',   color: 'var(--text-muted)' },
+  { id: 'accepted',  label: '✅ 수락',       color: 'var(--success)' },
+  { id: 'writing',   label: '✍️ 작성중',     color: 'var(--primary-500)' },
+  { id: 'published', label: '📤 발행됨',     color: 'var(--warning)' },
+  { id: 'settled',   label: '💰 정산완료',   color: 'var(--success)' },
+  { id: 'rejected',  label: '🚫 거절',       color: 'var(--danger)' },
+];
+
+async function renderSponsors(root) {
+  const fab = el('button', { class: 'fab', title: '협찬 추가', onclick: () => openSponsorModal(null, refresh) }, '+');
+
+  const board = el('div', { class: 'sponsor-board', id: 'sponsorBoard' });
+  root.appendChild(el('div', { style: { position: 'relative' } }, board, fab));
+
+  async function refresh() {
+    board.innerHTML = '';
+    let data = {};
+    try {
+      const r = await fetch('/api/sponsors');
+      if (r.ok) data = await r.json();
+    } catch {}
+
+    SPONSOR_COLS.forEach(col => {
+      const cards = data[col.id] || [];
+      const header = el('div', { class: 'sponsor-col-header' },
+        el('span', { style: { color: col.color } }, col.label),
+        el('span', { class: 'sponsor-col-count' }, String(cards.length))
+      );
+      const cardList = el('div', { class: 'sponsor-cards', 'data-status': col.id });
+      cards.forEach(s => cardList.appendChild(buildSponsorCard(s, refresh)));
+
+      const colEl = el('div', { class: 'sponsor-col' }, header, cardList);
+      board.appendChild(colEl);
+
+      if (typeof Sortable !== 'undefined') {
+        Sortable.create(cardList, {
+          group: 'sponsors',
+          animation: 150,
+          ghostClass: 'sortable-ghost',
+          dragClass: 'sortable-drag',
+          onEnd(evt) {
+            const id = evt.item.dataset.id;
+            const newStatus = evt.to.dataset.status;
+            if (!id || !newStatus) return;
+            fetch(`/api/sponsors/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus }),
+            }).then(() => refresh()).catch(() => toast('업데이트 실패', 'error'));
+          },
+        });
+      }
+    });
+  }
+
+  refresh();
+}
+
+function buildSponsorCard(s, refresh) {
+  const card = el('div', { class: 'sponsor-card', 'data-id': s.id });
+  card.appendChild(el('div', { class: 'sponsor-card-co' }, s.company));
+  if (s.product_name) card.appendChild(el('div', { class: 'sponsor-card-product' }, s.product_name));
+  if (s.budget_krw) card.appendChild(el('div', { class: 'sponsor-card-budget' }, fmtKrw(s.budget_krw)));
+  if (s.due_at) {
+    const daysLeft = Math.ceil((new Date(s.due_at) - new Date()) / 86400000);
+    const cls = 'sponsor-card-due' + (daysLeft < 0 ? ' overdue' : '');
+    card.appendChild(el('div', { class: cls }, daysLeft < 0 ? `마감 ${-daysLeft}일 초과` : `D-${daysLeft}`));
+  }
+  const actions = el('div', { class: 'sponsor-card-actions' });
+  actions.appendChild(el('button', { class: 'btn btn-ghost btn-sm', onclick: () => openSponsorModal(s, refresh) }, '편집'));
+  actions.appendChild(el('button', { class: 'btn btn-ghost btn-sm', onclick: async () => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    await fetch(`/api/sponsors/${s.id}`, { method: 'DELETE' });
+    refresh();
+  }}, '삭제'));
+  card.appendChild(actions);
+  return card;
+}
+
+function openSponsorModal(existing, onDone) {
+  const isEdit = !!existing;
+  const modal = el('div', { class: 'modal-overlay', onclick: e => { if (e.target === modal) modal.remove(); } });
+  const box = el('div', { class: 'modal' });
+  box.appendChild(el('div', { class: 'modal-header' },
+    el('h2', { class: 'modal-title' }, isEdit ? '협찬 편집' : '협찬 추가'),
+    el('button', { class: 'btn-icon', onclick: () => modal.remove() }, '×')
+  ));
+
+  const form = el('div', { class: 'sponsor-form' });
+  const fields = [
+    { key: 'company', label: '브랜드/회사명 *', type: 'text', req: true },
+    { key: 'contactEmail', label: '담당자 이메일', type: 'email' },
+    { key: 'productName', label: '제품/서비스명', type: 'text' },
+    { key: 'budgetKrw', label: '협찬 금액 (원)', type: 'number' },
+    { key: 'receivedAt', label: '제안 받은 날짜', type: 'date' },
+    { key: 'dueAt', label: '마감일', type: 'date' },
+    { key: 'notes', label: '메모', type: 'textarea' },
+  ];
+  const inputs = {};
+  fields.forEach(f => {
+    const wrap = el('div', { class: 'field' },
+      el('label', { class: 'field-label' }, f.label)
+    );
+    const inp = f.type === 'textarea'
+      ? el('textarea', { class: 'input', rows: 3, style: { resize: 'vertical' } })
+      : el('input', { class: 'input', type: f.type });
+    if (existing) {
+      const dbKey = { contactEmail: 'contact_email', productName: 'product_name',
+                      budgetKrw: 'budget_krw', receivedAt: 'received_at', dueAt: 'due_at' }[f.key] || f.key;
+      inp.value = existing[dbKey] || '';
+    }
+    inputs[f.key] = inp;
+    wrap.appendChild(inp);
+    form.appendChild(wrap);
+  });
+
+  const footer = el('div', { class: 'modal-footer' },
+    el('button', { class: 'btn btn-ghost', onclick: () => modal.remove() }, '취소'),
+    el('button', { class: 'btn btn-primary', onclick: async () => {
+      const body = {};
+      fields.forEach(f => { const v = inputs[f.key].value.trim(); if (v) body[f.key] = v; });
+      if (!body.company) { toast('회사명을 입력하세요', 'error'); return; }
+      const url = isEdit ? `/api/sponsors/${existing.id}` : '/api/sponsors';
+      const method = isEdit ? 'PATCH' : 'POST';
+      try {
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!r.ok) throw new Error((await r.json()).error);
+        modal.remove(); onDone();
+        toast(isEdit ? '협찬 업데이트됨' : '협찬 추가됨', 'success');
+      } catch (err) { toast(err.message, 'error'); }
+    }}, isEdit ? '저장' : '추가')
+  );
+
+  box.appendChild(form);
+  box.appendChild(footer);
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  setTimeout(() => inputs.company.focus(), 50);
 }
 
 /* ═════════════════════════════════════════════════════════════════
@@ -1704,8 +1839,9 @@ async function tabChannels(body) {
     existing: connected.adpost,
   }));
 
-  card.appendChild(settingRow('🤝 협찬 메일 (Gmail)', '제안 메일 자동 분류',
-    el('span', { class: 'chip' }, 'M6에서 활성화')));
+  card.appendChild(settingRow('🤝 협찬 보드',
+    '협찬 파이프라인 관리 (제안→수락→작성→발행→정산)',
+    el('button', { class: 'btn btn-ghost btn-sm', onclick: () => navigate('/sponsors') }, '보드 열기 →')));
   card.appendChild(settingRow('💱 알리/아마존', '해외 제휴 채널',
     el('span', { class: 'chip' }, 'Post-MVP')));
 
@@ -1786,10 +1922,18 @@ function tabNotif(body) {
   card.appendChild(el('h2', { class: 'card-title' }, '🔔 알림'));
   card.appendChild(settingRow('발행 완료 Slack 알림', 'SLACK_WEBHOOK_URL',
     el('span', { class: 'badge badge-success' }, '환경변수로 설정')));
+  card.appendChild(settingRow('인앱 알림', '발행·부진·키워드·협찬 마감 알림',
+    el('span', { class: 'badge badge-success' }, 'M6 활성화')));
   card.appendChild(settingRow('일일 추천 다이제스트', '매일 아침 황금 키워드 메일',
-    el('span', { class: 'chip' }, 'M6에서 활성화')));
+    el('span', { class: 'chip' }, 'Post-MVP')));
   card.appendChild(settingRow('부진 글 자동 알림', '14일 노출 < 100',
-    el('span', { class: 'chip' }, 'M5에서 활성화')));
+    el('span', { class: 'badge badge-success' }, 'M5 활성화')));
+  card.appendChild(settingRow('온보딩 투어 다시 보기', '첫 방문 가이드',
+    el('button', { class: 'btn btn-ghost btn-sm', onclick: () => {
+      localStorage.removeItem('onboarding_done');
+      initOnboarding();
+      toast('온보딩 투어를 시작합니다', 'info');
+    }}, '다시 보기')));
   body.appendChild(card);
 }
 
@@ -1802,3 +1946,181 @@ function tabUsage(body) {
     el('input', { class: 'input', type: 'number', value: '20', style: { width: '100px' } })));
   body.appendChild(card);
 }
+
+/* ═════════════════════════════════════════════════════════════════
+   M6: Notification Panel
+   ═════════════════════════════════════════════════════════════════ */
+const NOTIF_ICONS = {
+  publish_done:    '📤',
+  slump_alert:     '⚠️',
+  keyword_refresh: '🔍',
+  sponsor_due:     '🤝',
+  default:         '🔔',
+};
+
+let _notifOpen = false;
+
+async function initNotifications() {
+  const btn = document.getElementById('notifBtn');
+  const panel = document.getElementById('notifPanel');
+  const badge = document.getElementById('notifBadge');
+  const list  = document.getElementById('notifList');
+  const readAll = document.getElementById('notifReadAll');
+
+  async function loadNotifs() {
+    try {
+      const r = await fetch('/api/notifications');
+      if (!r.ok) return;
+      const { items, unread } = await r.json();
+      badge.hidden = unread === 0;
+      badge.textContent = unread > 9 ? '9+' : unread || '';
+      list.innerHTML = '';
+      if (!items.length) {
+        list.appendChild(el('div', { class: 'notif-empty' }, '알림이 없습니다.'));
+        return;
+      }
+      items.forEach(n => {
+        const row = el('div', {
+          class: 'notif-item' + (n.read_at ? '' : ' unread'),
+          onclick: async () => {
+            if (!n.read_at) {
+              await fetch(`/api/notifications/${n.id}/read`, { method: 'POST' });
+              row.classList.remove('unread');
+              await loadNotifs();
+            }
+            if (n.link) { window.location.hash = n.link.replace(/^#/, ''); panel.hidden = true; _notifOpen = false; }
+          },
+        });
+        row.appendChild(el('div', { class: 'notif-icon' }, NOTIF_ICONS[n.type] || NOTIF_ICONS.default));
+        const body = el('div', {});
+        body.appendChild(el('div', { class: 'notif-body-title' }, n.title));
+        if (n.body) body.appendChild(el('div', { class: 'notif-body-desc' }, n.body));
+        row.appendChild(body);
+        list.appendChild(row);
+      });
+    } catch {}
+  }
+
+  readAll.addEventListener('click', async () => {
+    await fetch('/api/notifications/read-all', { method: 'POST' });
+    await loadNotifs();
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _notifOpen = !_notifOpen;
+    panel.hidden = !_notifOpen;
+    if (_notifOpen) loadNotifs();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (_notifOpen && !panel.contains(e.target)) {
+      _notifOpen = false;
+      panel.hidden = true;
+    }
+  });
+
+  // Initial badge load
+  loadNotifs();
+  // Poll every 60s
+  setInterval(loadNotifs, 60000);
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   M6: Onboarding tour
+   ═════════════════════════════════════════════════════════════════ */
+const ONBOARD_STEPS = [
+  { icon: '🏠', title: '안녕하세요! 👋', desc: '블로그 자동화 수익 스튜디오에 오신 걸 환영합니다. 주요 기능을 빠르게 살펴볼게요.' },
+  { icon: '🔍', title: '키워드 발굴', desc: 'AI가 매일 황금 키워드를 추천합니다. 경쟁이 낮고 검색량이 높은 키워드를 골라 바로 글쓰기로 연결하세요.' },
+  { icon: '✍️', title: 'AI 블로그 생성', desc: '키워드를 선택하고 "작성" 버튼 하나로 SEO 최적화된 블로그 글이 자동 생성됩니다. 쿠팡 제휴 링크도 자동 삽입돼요.' },
+  { icon: '💰', title: '수익 관리', desc: '애드포스트·쿠팡·협찬 수익을 한 곳에서 관리하세요. 글별 수익과 성과를 실시간으로 확인할 수 있어요.' },
+  { icon: '🚀', title: '시작할 준비 완료!', desc: '대시보드에서 전체 현황을 확인하고, 키워드 발굴에서 첫 글을 시작해보세요!' },
+];
+
+function initOnboarding() {
+  if (localStorage.getItem('onboarding_done')) return;
+  const overlay = document.getElementById('onboardOverlay');
+  const stepsEl = document.getElementById('onboardSteps');
+  const dotsEl  = document.getElementById('onboardDots');
+  const nextBtn  = document.getElementById('onboardNext');
+  const skipBtn  = document.getElementById('onboardSkip');
+  let cur = 0;
+
+  function render() {
+    stepsEl.innerHTML = '';
+    dotsEl.innerHTML = '';
+    const s = ONBOARD_STEPS[cur];
+    stepsEl.appendChild(
+      el('div', { class: 'onboard-step' },
+        el('div', { class: 'onboard-step-icon' }, s.icon),
+        el('div', { class: 'onboard-step-title' }, s.title),
+        el('div', { class: 'onboard-step-desc' }, s.desc)
+      )
+    );
+    ONBOARD_STEPS.forEach((_, i) =>
+      dotsEl.appendChild(el('div', { class: 'onboard-dot' + (i === cur ? ' active' : '') }))
+    );
+    nextBtn.textContent = cur === ONBOARD_STEPS.length - 1 ? '시작하기 🎉' : '다음';
+  }
+
+  function finish() {
+    localStorage.setItem('onboarding_done', '1');
+    overlay.hidden = true;
+  }
+
+  nextBtn.addEventListener('click', () => {
+    if (cur < ONBOARD_STEPS.length - 1) { cur++; render(); }
+    else finish();
+  });
+  skipBtn.addEventListener('click', finish);
+
+  overlay.hidden = false;
+  render();
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   M6: PWA — service worker + install prompt
+   ═════════════════════════════════════════════════════════════════ */
+function initPWA() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
+  let deferredPrompt = null;
+  const banner = document.getElementById('pwaBanner');
+  const installBtn = document.getElementById('pwaInstall');
+  const dismissBtn = document.getElementById('pwaDismiss');
+
+  if (localStorage.getItem('pwa_dismissed')) return;
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    banner.hidden = false;
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    banner.hidden = true;
+    if (outcome === 'accepted') toast('앱이 홈 화면에 추가됐습니다!', 'success');
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    banner.hidden = true;
+    localStorage.setItem('pwa_dismissed', '1');
+  });
+}
+
+/* ═════════════════════════════════════════════════════════════════
+   M6: Settings — update notif tab & sponsor channel row
+   ═════════════════════════════════════════════════════════════════ */
+
+/* ──────────────── M6 bootstrap ──────────────── */
+(function initM6() {
+  initNotifications();
+  initOnboarding();
+  initPWA();
+}());
