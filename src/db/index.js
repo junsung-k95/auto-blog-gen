@@ -4,13 +4,14 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const DB_DIR = path.join(__dirname, '../../data');
+const IS_VERCEL = !!process.env.VERCEL;
+const DB_DIR = IS_VERCEL ? '/tmp/auto-blog-gen' : path.join(__dirname, '../../data');
 const DB_PATH = path.join(DB_DIR, 'app.db');
 
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+db.pragma(IS_VERCEL ? 'journal_mode = MEMORY' : 'journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 function uuid() {

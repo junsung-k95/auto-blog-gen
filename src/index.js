@@ -11,12 +11,15 @@ const keywords = require('./services/keywords');
 const jobs = require('./services/jobQueue');
 const { authMiddleware } = require('./services/auth');
 
+const IS_VERCEL = !!process.env.VERCEL;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure data/ exists, run migrations, seed demo keywords if DB is empty.
-const dataDir = path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+// Ensure data/ exists (skip on Vercel — DB lives in /tmp), run migrations.
+if (!IS_VERCEL) {
+  const dataDir = path.join(__dirname, '../data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+}
 migrate();
 try { keywords.seedDemo(); } catch (e) { console.warn('[seed:keywords]', e.message); }
 try {
@@ -60,7 +63,12 @@ app.use('/api', require('./routes/notifications'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.listen(PORT, () => {
-  console.log(`auto-blog-gen running on http://localhost:${PORT}`);
-  jobs.start();
-});
+if (IS_VERCEL) {
+  // Vercel serverless: export the Express app handler; skip listen() & jobs.start().
+  module.exports = app;
+} else {
+  app.listen(PORT, () => {
+    console.log(`auto-blog-gen running on http://localhost:${PORT}`);
+    jobs.start();
+  });
+}
