@@ -36,6 +36,7 @@ app.use('/api', require('./routes/keywords'));
 app.use('/api', require('./routes/channels'));
 app.use('/api', require('./routes/coupang'));
 app.use('/api', require('./routes/seo'));
+app.use('/api', require('./routes/posts'));
 app.use('/api', require('./routes/transcribe')(upload));
 app.use('/api', require('./routes/generate')(upload));
 app.use('/api', require('./routes/publish'));
