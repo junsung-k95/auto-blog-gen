@@ -90,6 +90,68 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(status, run_at);
     `,
   },
+  {
+    id: '002_monetization',
+    sql: `
+      CREATE TABLE IF NOT EXISTS revenue_channels (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,             -- 'adpost' | 'coupang' | 'sponsor' | 'ali'
+        credentials_enc TEXT,           -- encrypted JSON
+        active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        UNIQUE (user_id, kind)
+      );
+
+      CREATE TABLE IF NOT EXISTS posts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        blog_profile_id TEXT REFERENCES blog_profiles(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'draft',
+        title TEXT,
+        content_html TEXT,
+        tags TEXT,
+        category TEXT,
+        scheduled_at TEXT,
+        published_at TEXT,
+        naver_post_id TEXT,
+        ai_provider TEXT,
+        token_cost_usd REAL,
+        seo_score INTEGER,
+        risk_flags TEXT,
+        disclosure_kind TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+
+      CREATE TABLE IF NOT EXISTS post_keywords (
+        post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        keyword_id TEXT NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'primary',
+        rank_at_publish INTEGER,
+        PRIMARY KEY (post_id, keyword_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS affiliate_links (
+        id TEXT PRIMARY KEY,
+        post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+        channel TEXT NOT NULL,
+        short_id TEXT NOT NULL,
+        target_url TEXT NOT NULL,
+        product_name TEXT,
+        product_price INTEGER,
+        thumbnail_url TEXT,
+        inserted_at TEXT NOT NULL,
+        UNIQUE (short_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_affiliate_post ON affiliate_links(post_id);
+    `,
+  },
 ];
 
 function migrate() {
