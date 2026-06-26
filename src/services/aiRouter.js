@@ -11,6 +11,7 @@ function getProvider(req) {
   const fromEnv = process.env.AI_PROVIDER;
   const provider = fromReq || fromEnv || 'openai';
   if (provider === 'claude') return 'claude';
+  if (provider === 'claude-cli') return 'claude-cli';
   if (provider === 'codex') return 'codex';
   return 'openai';
 }

@@ -4,6 +4,7 @@ const express = require('express');
 const { getProvider } = require('../services/aiRouter');
 const openaiService = require('../services/openai');
 const claudeService = require('../services/claude');
+const claudeCLIService = require('../services/claudeCLI');
 const { loadStyleExamples, buildStylePrompt } = require('../services/pastPosts');
 const { disclosureHtml, resolveDisclosure } = require('../services/disclosure');
 
@@ -111,6 +112,11 @@ module.exports = function (upload) {
       let result;
       if (provider === 'claude') {
         result = await claudeService.generateBlogPost(
+          transcript, imageBuffers, stylePrompt, enrichedMemo,
+          (chunk) => sendEvent({ chunk })
+        );
+      } else if (provider === 'claude-cli') {
+        result = await claudeCLIService.generateBlogPost(
           transcript, imageBuffers, stylePrompt, enrichedMemo,
           (chunk) => sendEvent({ chunk })
         );
