@@ -3,7 +3,7 @@ services:
     name: auto-blog-gen
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm install -g @anthropic-ai/claude-code
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -20,3 +20,5 @@ services:
         sync: false
       - key: AI_PROVIDER
         value: openai
+      - key: CLAUDE_AUTH_B64
+        sync: false

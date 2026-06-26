@@ -4,7 +4,26 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { execSync } = require('child_process');
 const multer = require('multer');
+
+// Claude CLI OAuth 세션 복원 (CLAUDE_AUTH_B64 env var → ~/.claude/)
+function restoreClaudeAuth() {
+  const b64 = process.env.CLAUDE_AUTH_B64;
+  if (!b64) return;
+  const tmpFile = path.join(os.tmpdir(), 'claude_auth.tar.gz');
+  try {
+    fs.writeFileSync(tmpFile, Buffer.from(b64, 'base64'));
+    execSync(`tar -xzf "${tmpFile}" -C "${os.homedir()}"`, { stdio: 'pipe' });
+    console.log('✅ Claude CLI 인증 복원 완료 (~/.claude/)');
+  } catch (err) {
+    console.warn('⚠️ Claude CLI 인증 복원 실패:', err.message);
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch {}
+  }
+}
+restoreClaudeAuth();
 
 const { migrate } = require('./db/migrations');
 const keywords = require('./services/keywords');
